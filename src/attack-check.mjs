@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -34,8 +34,8 @@ export async function runAttackChecks(config) {
     return [{ attackId: 'anonymous_note_read', expected: '비로그인 화면에서 가상 메모를 확인',
       observed: staticRead.visible ? '비로그인 요청에서 공개 가상 메모 확인 표시가 보임' : `비로그인 요청에서 확인 표시가 보이지 않음 (HTTP ${staticRead.status})` }];
   }
-  if (config.step === 3 || config.step === 4) {
-    // 3·4단계: 토큰 없는 요청과 가짜 토큰 요청만 실제로 보냅니다. 비밀번호는 이 파일에 넣지 않으므로
+  if (config.step >= 3 && config.step <= 5) {
+    // 3·4·5단계: 토큰 없는 요청과 가짜 토큰 요청만 실제로 보냅니다. 비밀번호는 이 파일에 넣지 않으므로
     // 로그인 상태의 추가·수정·삭제와 A/B 교차 접근은 여기서 보내지 않고 '미실행'으로 남깁니다.
     const probeId = '11111111-1111-4111-8111-111111111111';
     const noteBody = JSON.stringify({ title: 'x', body: 'y' });
@@ -64,20 +64,20 @@ export async function runAttackChecks(config) {
       results.push({ attackId, expected: '로그인 없이는 거부(401)되고 메모가 보이지 않아야 함',
         observed: `${method} ${path.replace(probeId, ':id')} → HTTP ${response.status}${leaked ? ' (메모 내용이 보임)' : ', 메모 내용 없음'}` });
     }
-    if (config.step === 4) {
-      // 4단계: anon 키로 Supabase Data API를 직접 읽어 봅니다. 키는 배포된 화면에 있는 공개용 값만 씁니다.
+    if (config.step >= 4) {
+      // 4·5단계: anon 키로 Supabase Data API를 직접 읽어 봅니다(5단계는 originalApiUrl). 키는 배포된 화면에 있는 공개용 값만 씁니다.
       const direct = { attackId: 'anon_data_api_read', expected: 'anon 키로 notes 표를 직접 읽을 수 없어야 함(401/403)' };
       try {
         const page = await (await fetch(app, { redirect: 'error', signal: AbortSignal.timeout(10000) })).text();
         const key = page.match(/sb_publishable_[A-Za-z0-9_-]+/u)?.[0];
         const base = new URL(config.identityProvider.issuer).origin;
         if (!key) throw new Error('no key');
-        const response = await fetch(new URL('/rest/v1/notes?select=*', base), {
+        const response = await fetch(config.step >= 5 ? new URL(config.originalApiUrl) : new URL('/rest/v1/notes?select=*', base), {
           redirect: 'error', signal: AbortSignal.timeout(10000), headers: { apikey: key },
         });
         const text = await response.text();
         const leaked = response.ok || /"(title|content)"\s*:/u.test(text);
-        results.push({ ...direct, observed: `anon GET /rest/v1/notes → HTTP ${response.status}${leaked ? ' (메모 내용이 보임)' : ', 메모 내용 없음'}` });
+        results.push({ ...direct, observed: `anon GET ${config.step >= 5 ? 'originalApiUrl' : '/rest/v1/notes'} → HTTP ${response.status}${leaked ? ' (메모 내용이 보임)' : ', 메모 내용 없음'}` });
       } catch {
         results.push({ ...direct, observed: '미실행 (공개용 키 또는 요청을 확인하지 못함)' });
       }
