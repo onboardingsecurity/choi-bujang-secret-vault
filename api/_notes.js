@@ -46,6 +46,18 @@ export async function guard(request, response, allowed) {
   return { user, db };
 }
 
+// 4단계: DB 행의 owner_id가 검증된 사용자 ID와 같을 때만 본인 메모입니다.
+// owner_id가 비어 있거나 다르면 본인 것이 아니므로 기본 거부합니다.
+export const isOwner = (row, user) =>
+  typeof row?.owner_id === 'string' && row.owner_id.toLowerCase() === String(user.userId).toLowerCase();
+
+// 본문이 owner_id를 보냈는데 검증된 사용자와 다르면 소유자 변경 시도입니다. 값은 저장에 쓰지 않습니다.
+export function triesOwnerChange(input, user) {
+  if (!input || typeof input !== 'object' || !('owner_id' in input)) return false;
+  return !(typeof input.owner_id === 'string'
+    && input.owner_id.toLowerCase() === String(user.userId).toLowerCase());
+}
+
 export const toNote = row => ({ id: row.note_id, title: row.title, body: row.content });
 
 // 제목·본문만 받습니다. owner_id 등 다른 칸은 무시합니다.

@@ -1,6 +1,6 @@
-// 3단계: GET /api/notes (내 메모 목록), POST /api/notes (추가).
-// 로그인 확인만 합니다. 다른 사람 메모를 고치는 허점은 4단계에서 막습니다.
-import { guard, readFields, toNote, UUID } from '../_notes.js';
+// 4단계: GET /api/notes (내 메모 목록), POST /api/notes (추가).
+// 목록은 검증된 사용자 ID의 owner_id만 읽고, 추가할 때 owner_id는 항상 검증된 ID로 저장합니다.
+import { guard, readFields, toNote, triesOwnerChange, UUID } from '../_notes.js';
 
 export default async function handler(request, response) {
   const ctx = await guard(request, response, ['GET', 'POST']);
@@ -14,6 +14,9 @@ export default async function handler(request, response) {
     return response.status(200).json(data.map(toNote));
   }
 
+  if (triesOwnerChange(request.body, user)) {
+    return response.status(403).json({ error: 'OWNER_CHANGE_FORBIDDEN' });
+  }
   const fields = readFields(request.body);
   if (!fields) return response.status(400).json({ error: 'INVALID_NOTE' });
   const givenId = request.body.id;
