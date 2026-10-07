@@ -1,0 +1,32 @@
+{
+  "schema": "aleph.xdr.brute-force.patterns.v1",
+  "basis": "MITRE ATT&CK T1110 (Brute Force)",
+  "thresholdsNote": "ATT&CK는 건수·시간 기준을 정하지 않습니다. 기준 값은 아직 정하지 않았고 null로 남깁니다.",
+  "patterns": [
+    {
+      "name": "same_source_failure_streak",
+      "mitre": "T1110.001",
+      "condition": {
+        "groupBy": ["srcip"],
+        "event": "로그인 실패",
+        "within": "짧은 시간 창",
+        "minFailures": null,
+        "windowMinutes": null
+      },
+      "evidence": "T1110.001(Password Guessing): 공격자가 비밀번호를 반복해 추측하므로 같은 출발지에서 짧은 시간에 로그인 실패가 연속으로 쌓입니다."
+    },
+    {
+      "name": "same_password_many_accounts",
+      "mitre": "T1110.003",
+      "condition": {
+        "groupBy": ["srcip"],
+        "event": "로그인 실패",
+        "distinct": "user",
+        "sameSecretAcrossAccounts": true,
+        "minAccounts": null,
+        "windowMinutes": null
+      },
+      "evidence": "T1110.003(Password Spraying): 흔한 비밀번호 하나를 여러 계정에 차례로 대입해 계정별 실패 수는 적고 계정 수가 많습니다."
+    }
+  ]
+}
