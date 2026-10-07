@@ -54,13 +54,13 @@
   </main>
   <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm';
-    // 공개용 값입니다. 서버 전용 키는 이 화면에 넣지 않습니다.
-    const SUPABASE_URL = 'https://eyrodbkzyapsuiudjjft.supabase.co';
-    const PUBLISHABLE_KEY = 'sb_publishable_OMXWwNtJ9ljhBr9rZtA2Tg_LpUjNOM6';
-    const supabase = createClient(SUPABASE_URL, PUBLISHABLE_KEY);
-
     const $ = id => document.getElementById(id);
     const say = text => { $('msg').textContent = text; };
+    // 로그인에 쓰는 공개용 값은 소스에 적지 않고 서버 함수(/api/config)에서 받습니다.
+    const settings = await fetch('/api/config', { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null)).catch(() => null);
+    if (!settings?.url || !settings?.key) say('로그인 설정을 불러오지 못했습니다.');
+    const supabase = createClient(settings?.url ?? 'https://invalid.invalid', settings?.key ?? 'unset');
     let editingId = null;
     let accessToken = null;
 

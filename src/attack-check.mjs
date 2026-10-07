@@ -65,11 +65,11 @@ export async function runAttackChecks(config) {
         observed: `${method} ${path.replace(probeId, ':id')} → HTTP ${response.status}${leaked ? ' (메모 내용이 보임)' : ', 메모 내용 없음'}` });
     }
     if (config.step >= 4) {
-      // 4·5단계: anon 키로 Supabase Data API를 직접 읽어 봅니다(5단계는 originalApiUrl). 키는 배포된 화면에 있는 공개용 값만 씁니다.
+      // 4·5단계: anon 키로 Supabase Data API를 직접 읽어 봅니다(5단계는 originalApiUrl). 키는 배포된 /api/config가 내려 주는 공개용 값만 씁니다.
       const direct = { attackId: 'anon_data_api_read', expected: 'anon 키로 notes 표를 직접 읽을 수 없어야 함(401/403)' };
       try {
-        const page = await (await fetch(app, { redirect: 'error', signal: AbortSignal.timeout(10000) })).text();
-        const key = page.match(/sb_publishable_[A-Za-z0-9_-]+/u)?.[0];
+        const settings = await (await fetch(new URL('/api/config', app), { redirect: 'error', signal: AbortSignal.timeout(10000) })).json();
+        const key = typeof settings?.key === 'string' ? settings.key : undefined;
         const base = new URL(config.identityProvider.issuer).origin;
         if (!key) throw new Error('no key');
         const response = await fetch(config.step >= 5 ? new URL(config.originalApiUrl) : new URL('/rest/v1/notes?select=*', base), {
