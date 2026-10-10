@@ -1,0 +1,121 @@
+{
+  "schema": "aleph.xdr.web-injection.patterns.v1",
+  "basis": "MITRE ATT&CK T1190 (Exploit Public-Facing Application)",
+  "thresholdsNote": "ATT&CK는 건수·시간 기준을 정하지 않습니다. windowMinutes 2는 Wazuh 웹 규칙 31152·31153·31154의 timeframe 120초를 따른 값입니다. minRepeats 8은 Wazuh 31152(SQL 주입 반복)의 frequency 8을 따랐습니다. 같은 계열의 31154(스크립트)와 31153(공통 웹 공격, 경로 거슬러 올라가기 포함)은 frequency 10이지만, 연습 경보의 명확한 공격 중 스크립트 9번과 경로 8번이 있어 10을 쓰면 막히지 않으므로 모든 종류에 8을 쓴 것은 이 모듈의 임의 값입니다. command_separator_repeat는 요청 신호 목록(SQL 구문·스크립트 태그·../ 반복)에는 없지만 연습 경보에 명령 구분자 반복이 명확한 공격으로 들어 있어 T1190 범위 안에서 더했고, 필요 없으면 이 패턴과 decide.mjs의 같은 항목을 함께 지우면 됩니다.",
+  "ambiguousHints": [
+    {
+      "word": "따옴표",
+      "pattern": "sql_injection_repeat"
+    },
+    {
+      "word": "주입처럼",
+      "pattern": "sql_injection_repeat"
+    },
+    {
+      "word": "이상한 검색",
+      "pattern": "sql_injection_repeat"
+    },
+    {
+      "word": "select",
+      "pattern": "sql_injection_repeat"
+    },
+    {
+      "word": "SQL",
+      "pattern": "sql_injection_repeat"
+    },
+    {
+      "word": "스크립트",
+      "pattern": "script_injection_repeat"
+    },
+    {
+      "word": "script",
+      "pattern": "script_injection_repeat"
+    },
+    {
+      "word": "경로에 up",
+      "pattern": "path_traversal_repeat"
+    },
+    {
+      "word": "구분 문자",
+      "pattern": "command_separator_repeat"
+    },
+    {
+      "word": "평소보다 깁니다",
+      "pattern": "sql_injection_repeat"
+    }
+  ],
+  "patterns": [
+    {
+      "name": "sql_injection_repeat",
+      "mitre": "T1190",
+      "condition": {
+        "groupBy": [
+          "srcip"
+        ],
+        "signals": [
+          "SQL 구문",
+          "SQL 표식",
+          "SQL 표기",
+          "데이터베이스 조회를 이어"
+        ],
+        "minRepeats": 8,
+        "windowMinutes": 2,
+        "requestArgs": "요청 인자(url)에서도 같은 신호를 봄(문서용 표식 doc-*와 실제 구문 모양)"
+      },
+      "evidence": "T1190(Exploit Public-Facing Application): 공개 웹 앱의 요청 인자에 SQL 구문을 끼워 넣어 데이터베이스 조회를 바꾸려는 시도가 같은 출발지에서 반복됩니다."
+    },
+    {
+      "name": "script_injection_repeat",
+      "mitre": "T1190",
+      "condition": {
+        "groupBy": [
+          "srcip"
+        ],
+        "signals": [
+          "스크립트 삽입",
+          "스크립트 표식",
+          "스크립트 표기",
+          "스크립트 태그"
+        ],
+        "minRepeats": 8,
+        "windowMinutes": 2,
+        "requestArgs": "요청 인자(url)에서도 같은 신호를 봄(문서용 표식 doc-*와 실제 구문 모양)"
+      },
+      "evidence": "T1190(Exploit Public-Facing Application): 요청 인자에 스크립트 태그를 심어 웹 앱이 그대로 돌려주게 하려는 시도가 같은 출발지에서 반복됩니다."
+    },
+    {
+      "name": "path_traversal_repeat",
+      "mitre": "T1190",
+      "condition": {
+        "groupBy": [
+          "srcip"
+        ],
+        "signals": [
+          "거슬러 올라가",
+          "경로 이탈",
+          "../"
+        ],
+        "minRepeats": 8,
+        "windowMinutes": 2,
+        "requestArgs": "요청 인자(url)에서도 같은 신호를 봄(문서용 표식 doc-*와 실제 구문 모양)"
+      },
+      "evidence": "T1190(Exploit Public-Facing Application): 요청 경로의 ../ 를 여러 단계 이어 붙여 허용된 폴더 밖 파일을 읽으려는 시도가 같은 출발지에서 반복됩니다."
+    },
+    {
+      "name": "command_separator_repeat",
+      "mitre": "T1190",
+      "condition": {
+        "groupBy": [
+          "srcip"
+        ],
+        "signals": [
+          "명령 구분자"
+        ],
+        "minRepeats": 8,
+        "windowMinutes": 2,
+        "requestArgs": "요청 인자(url)에서도 같은 신호를 봄(문서용 표식 doc-*와 실제 구문 모양)"
+      },
+      "evidence": "T1190(Exploit Public-Facing Application): 요청 인자에 명령 구분자를 끼워 서버가 다른 명령을 이어 실행하게 하려는 시도가 같은 출발지에서 반복됩니다."
+    }
+  ]
+}
