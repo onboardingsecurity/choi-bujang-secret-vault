@@ -5,3 +5,6 @@ bundle-notes.json
 node_modules/
 public/aleph.json
 db/seed-notes.sql
+xdr/*/result.json
+xdr/*/block-candidates.json
+xdr/alerts.log

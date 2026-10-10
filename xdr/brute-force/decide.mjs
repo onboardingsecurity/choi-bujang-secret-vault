@@ -1,71 +1,65 @@
-import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { pickAlert } from './read-alerts.mjs';
+// 근거: MITRE ATT&CK T1110(Brute Force). 값은 patterns.json과 같습니다.
+// ATT&CK는 건수 기준을 정하지 않습니다. minFailures 15와 minAccounts 5는 연습 경보에 맞춘 이 모듈의 값입니다(명확한 공격만 block).
+// Wazuh 기본 sshd 규칙(5712 등)의 8회는 경보를 올리는 기준이라 block 기준으로 쓰지 않았습니다.
+const PATTERNS = [
+  {
+    name: 'same_source_failure_streak',
+    mitre: 'T1110.001',
+    condition: { groupBy: ['srcip'], event: '로그인 실패', minFailures: 15 },
+    evidence: 'T1110.001(Password Guessing): 같은 출발지에서 짧은 시간에 로그인 실패가 연속으로 쌓입니다.',
+  },
+  {
+    name: 'same_password_many_accounts',
+    mitre: 'T1110.003',
+    condition: { groupBy: ['srcip'], event: '로그인 실패', distinct: 'user', minAccounts: 5 },
+    evidence: 'T1110.003(Password Spraying): 같은 비밀번호를 여러 계정에 차례로 대입해 계정 수가 많습니다.',
+  },
+];
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const { patterns } = JSON.parse(await readFile(join(HERE, 'patterns.json'), 'utf8'));
-const PATTERN_NAMES = new Set(patterns.map(pattern => pattern.name));
-const STREAK = 'same_source_failure_streak';
-const SPRAY = 'same_password_many_accounts';
-for (const name of [STREAK, SPRAY]) {
-  if (!PATTERN_NAMES.has(name)) throw new Error(`patterns.json에 ${name} 패턴이 없습니다.`);
+const BLOCK_AT = 0.85;
+const ALERT_AT = 0.5;
+
+const STREAK = PATTERNS[0];
+const SPRAY = PATTERNS[1];
+const MIN_FAILURES = STREAK.condition.minFailures;
+const MIN_ACCOUNTS = SPRAY.condition.minAccounts;
+const SPRAY_WORDS = /계정\s*\d+개|여러 계정|서로 다른 계정/;
+
+function count(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-// 확신도 기준은 요청대로 0.85 / 0.5. 건수 기준은 연습 경보에 맞춘 이 모듈의 값이며 ATT&CK가 정한 값이 아닙니다.
-export const BLOCK_AT = 0.85;
-export const ALERT_AT = 0.5;
-const CLEAR_FAILURES = 15;
-const CLEAR_ACCOUNTS = 5;
-const AMBIGUOUS_FAILURES = 3;
-const JEV_TIMEOUT_MS = 5000;
-
-function classify(alert) {
-  const row = pickAlert(alert);
-  const description = row.description ?? '';
-  const isFailure = description.includes('실패');
-  const succeeded = /성공(했|하였)/.test(description);
-  const accountList = typeof alert?.data?.accounts === 'string'
+// 계정 수: 경보의 accounts 목록 길이, 없으면 설명 속 "계정 N개".
+function accountsOf(alert, description) {
+  const list = typeof alert?.data?.accounts === 'string'
     ? alert.data.accounts.split(',').filter(Boolean).length : 0;
-  const count = Number(alert?.data?.count);
-  const failures = Number.isFinite(count) ? count : 0;
-  const spraying = accountList >= CLEAR_ACCOUNTS || /계정\s*\d+개|여러 계정|서로 다른 계정/.test(description);
+  const named = /계정\s*(\d+)개/.exec(description);
+  return Math.max(list, named ? count(named[1]) : 0);
+}
+
+// 확신도: 경보가 패턴 기준(MIN_FAILURES)에 얼마나 뚜렷하게 닿는지를 0~0.95로 매깁니다.
+// 기준에 닿으면 0.95(block), 모자라면 건수에 따라 0.45~0.84(alert까지, block은 안 됨)입니다.
+// 로그인 실패가 아닌 이벤트는 0, 성공으로 끝난 시도는 block 아래(0.84)로 눌러 둡니다.
+// 계정이 여러 개여도 "같은 비밀번호"라는 근거가 경보 설명에 없으면 계정 수는 건수로 셈하지 않고 1계정=1건으로만 봅니다.
+// 이 코드는 비밀번호가 같은지 직접 알 수 없고, 경보 설명의 문구로 추정할 뿐입니다.
+export function decide(alert) {
+  const description = typeof alert?.rule?.description === 'string' ? alert.rule.description : '';
+  const accounts = accountsOf(alert, description);
+  const failures = count(alert?.data?.count);
+  const spraying = accounts > 0 || SPRAY_WORDS.test(description);
   const pattern = spraying ? SPRAY : STREAK;
-  if (!isFailure && accountList < CLEAR_ACCOUNTS) return { row, kind: 'normal', pattern };
-  if (!succeeded && (failures >= CLEAR_FAILURES || accountList >= CLEAR_ACCOUNTS)) return { row, kind: 'clear', pattern };
-  if (Math.max(failures, accountList) >= AMBIGUOUS_FAILURES) return { row, kind: 'ambiguous', pattern };
-  return { row, kind: 'normal', pattern };
-}
-
-function byConfidence(confidence) {
-  if (confidence >= BLOCK_AT) return 'block';
-  if (confidence >= ALERT_AT) return 'alert';
-  return 'record';
-}
-
-async function ask(askJev, payload) {
-  if (typeof askJev !== 'function') return null;
-  let timer;
-  try {
-    const answer = await Promise.race([
-      Promise.resolve(askJev(payload)),
-      new Promise(resolve => { timer = setTimeout(() => resolve(null), JEV_TIMEOUT_MS); }),
-    ]);
-    return typeof answer === 'number' && Number.isFinite(answer) && answer >= 0 && answer <= 1 ? answer : null;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
+  const isFailure = description.includes('실패') || accounts >= MIN_ACCOUNTS;
+  if (!isFailure) {
+    return { action: 'record', confidence: 0, reason: `${pattern.name}에 해당하지 않는 정상 이벤트` };
   }
-}
-
-// 기본 호출 decide(alert)에는 Jev 연결이 없어 애매한 경보는 alert로 남습니다.
-// 두 번째 인자 { askJev }는 시험용 연결 자리이며, Jev에게는 비밀값을 가린 다섯 값과 패턴 이름만 넘깁니다.
-export async function decide(alert, { askJev } = {}) {
-  const { row, kind, pattern } = classify(alert);
-  if (kind === 'clear') return { action: 'block', confidence: 0.95, reason: `${pattern}: 명확한 무차별 대입` };
-  if (kind === 'normal') return { action: 'record', confidence: 0, reason: `${pattern}에 해당하지 않는 정상 이벤트` };
-  const confidence = await ask(askJev, { ...row, pattern });
-  if (confidence === null) return { action: 'alert', confidence: ALERT_AT, reason: `${pattern}: 애매함, Jev 응답 없음` };
-  return { action: byConfidence(confidence), confidence, reason: `${pattern}: 애매함, Jev 확신도 ${confidence}` };
+  const sameSecret = /같은 비밀번호/.test(description);
+  const volume = spraying
+    ? Math.max(failures, accounts * (sameSecret ? MIN_FAILURES / MIN_ACCOUNTS : 1))
+    : failures;
+  let confidence = volume >= MIN_FAILURES ? 0.95 : Math.min(0.84, 0.42 + 0.03 * volume);
+  if (/성공(했|하였)/.test(description)) confidence = Math.min(confidence, 0.84);
+  confidence = Math.round(confidence * 100) / 100;
+  const action = confidence >= BLOCK_AT ? 'block' : confidence >= ALERT_AT ? 'alert' : 'record';
+  return { action, confidence, reason: `${pattern.name}: ${pattern.evidence}` };
 }
