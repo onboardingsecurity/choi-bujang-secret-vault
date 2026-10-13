@@ -84,6 +84,14 @@
       </form>
       <ul id="notes" aria-live="polite"></ul>
     </section>
+    <!-- 12단계: 탈환 작전실. 서버가 승인된 기기로 확인한 뒤에만 열리고, 개수와 상태만 보여 주며 메모 본문은 그리지 않습니다. -->
+    <section id="war-box" class="status" aria-label="탈환 작전실" hidden>
+      <div class="bar"><strong>탈환 작전실</strong><button id="war-refresh" class="sub" type="button">요약 다시 읽기</button></div>
+      <p class="hint">항목마다 근거를 따로 적습니다. 「서버 응답으로 확인」만 이번 API 응답에서 읽은 값이고, 「코드 목록」은 실행 결과가 아니며, 「미실행·미연결」은 값을 모르는 것이지 0건이 아닙니다. 이 화면의 문구는 통과 근거가 아닙니다.</p>
+      <ul id="war-list" aria-live="polite"></ul>
+      <p class="hint" id="war-check" role="status"></p>
+      <pre class="hint" id="war-log"></pre>
+    </section>
     <p class="msg" id="msg" role="status"></p>
   </main>
   <script type="module">
@@ -186,6 +194,8 @@
     // 11단계: 자료실(메모 목록)은 서버가 이 로그인 세션을 승인된 기기로 확인했다고 답했을 때만 엽니다.
     function lockVault(notice) {
       $('app-box').hidden = true;
+      $('war-box').hidden = true;
+      $('war-list').replaceChildren();
       $('notes').replaceChildren();
       editingId = null;
       $('device-box').hidden = !signedIn;
@@ -198,6 +208,66 @@
       $('device-box').hidden = true;
       $('app-box').hidden = false;
       load();
+      loadWarRoom();
+    }
+
+    // 12단계 탈환 작전실: 화면 수치는 GET /api/war-room 응답에서만 만듭니다. 서버 기록 줄(logLine)도 같은 응답에 들어 있어,
+    // 화면에 그린 수치가 그 줄의 값과 같은지 여기서 대조하고, 학생은 같은 요청 ID 줄을 Vercel Logs에서 찾아 눈으로 맞춥니다.
+    const BASIS = { confirmed: '서버 응답으로 확인', listed: '코드 목록 · 실행 결과 아님', not_run: '미실행·미연결' };
+    const logToken = value => String(value).replace(/\s+/gu, '_').slice(0, 40);
+    function warCard(title, status, lines) {
+      const item = document.createElement('li');
+      const head = document.createElement('strong');
+      const body = document.createElement('span');
+      head.textContent = `${title} [${BASIS[status]}]`;
+      body.textContent = lines.join('\n');
+      item.append(head, body);
+      return item;
+    }
+    const passText = ok => (ok ? '검증 통과' : '검증 실패(복원에 쓰지 않음)');
+    function renderWarRoom(data) {
+      const { decider, detect, revocation, recovery } = data;
+      $('war-list').replaceChildren(
+        warCard('판정기 규칙', decider.status, [
+          `규칙 ${decider.ruleCount}개: ${decider.ruleIds.join(', ')}`,
+          `판정 결과: ${BASIS[decider.verdicts.status]} (심판의 판정은 이 화면에서 볼 수 없음)`]),
+        warCard('탐지 사건', detect.status, [
+          '받은 사건 수: 모름 (운영 반 엔진의 사건 전달이 이 저장소에 연결되어 있지 않음)',
+          '탐지가 낸 회수 제안: 모름']),
+        warCard('회수 상태', revocation.status, [
+          `내 기기 승인 ${revocation.approved} · 대기 ${revocation.pending} · 회수 ${revocation.revoked}`,
+          '실제 회수는 SQL Editor에서 사람이 하며, 이 화면은 읽기만 합니다']),
+        warCard('복구 버전', recovery.status, [
+          `정책 사본: ${recovery.policy.version ?? '읽지 못함'} · 해시 ${recovery.policy.shaPrefix ?? '없음'} · ${passText(recovery.policy.verified)}`
+            + (recovery.policy.changed === null ? '' : ` · 현재와 차이 ${recovery.policy.changed}건`),
+          `메모 사본: ${recovery.notes.version ?? '읽지 못함'} · 항목 ${recovery.notes.entries ?? '모름'}개 · ${passText(recovery.notes.verified)}`,
+          '메모 본문은 표시하지 않습니다(사본에는 해시만 있음)']));
+      // 화면에 그린 값으로 기록 줄과 같은 칸을 다시 만들어, 서버가 기록했다고 알려 준 줄과 맞는지 칸마다 대조합니다.
+      const shown = {
+        rules: decider.ruleCount, detect: detect.events === null ? 'not_connected' : detect.events,
+        devices_approved: revocation.approved, devices_pending: revocation.pending, devices_revoked: revocation.revoked,
+        policy_verified: recovery.policy.verified, policy_version: logToken(recovery.policy.version ?? 'none'),
+        policy_sha: recovery.policy.shaPrefix ?? 'none', policy_changed: recovery.policy.changed ?? 'na',
+        note_verified: recovery.notes.verified, note_version: logToken(recovery.notes.version ?? 'none'),
+        note_entries: recovery.notes.entries ?? 'na',
+      };
+      const logged = Object.fromEntries(data.logLine.split(' ').slice(2).map(part => part.split('=')));
+      const wrong = Object.keys(shown).filter(key => String(shown[key]) !== logged[key]);
+      const same = wrong.length === 0 && Object.keys(logged).length === Object.keys(shown).length;
+      $('war-check').textContent = `요청 ID ${data.requestId} · ${new Date(data.checkedAt).toLocaleString('ko-KR')} 확인 · `
+        + (same ? '화면 수치와 서버 기록 줄이 같음' : `화면 수치와 서버 기록 줄이 다름(${wrong.join(', ') || '칸 수'})`)
+        + '. Vercel Logs에서 아래 줄을 같은 요청 ID로 찾아 직접 맞춰 보세요.';
+      $('war-log').textContent = data.logLine;
+      $('war-box').hidden = false;
+    }
+    async function loadWarRoom() {
+      try { renderWarRoom(await api('/api/war-room')); }
+      catch (error) {
+        $('war-list').replaceChildren(warCard('탈환 작전실', 'not_run', [`요약을 읽지 못했습니다: ${error.message}`]));
+        $('war-check').textContent = '';
+        $('war-log').textContent = '';
+        $('war-box').hidden = false;
+      }
     }
 
     const STATUS_TEXT = { pending: '승인 대기', approved: '승인됨', revoked: '회수됨' };
@@ -335,6 +405,7 @@
       await checkDevice();
     });
     $('device-refresh').addEventListener('click', () => { say(''); deviceSay(''); checkDevice(); });
+    $('war-refresh').addEventListener('click', () => { say(''); loadWarRoom(); });
     $('note-form').addEventListener('submit', async event => {
       event.preventDefault();
       const fields = JSON.stringify({ title: $('note-title').value, body: $('note-body').value });
