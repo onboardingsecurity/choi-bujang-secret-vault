@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -34,8 +34,8 @@ export async function runAttackChecks(config) {
     return [{ attackId: 'anonymous_note_read', expected: '비로그인 화면에서 가상 메모를 확인',
       observed: staticRead.visible ? '비로그인 요청에서 공개 가상 메모 확인 표시가 보임' : `비로그인 요청에서 확인 표시가 보이지 않음 (HTTP ${staticRead.status})` }];
   }
-  if (config.step >= 3 && config.step <= 6) {
-    // 3·4·5·6단계: 토큰 없는 요청과 가짜 토큰 요청만 실제로 보냅니다. 비밀번호는 이 파일에 넣지 않으므로
+  if (config.step >= 3 && config.step <= 7) {
+    // 3·4·5·6·7단계: 토큰 없는 요청과 가짜 토큰 요청만 실제로 보냅니다. 비밀번호는 이 파일에 넣지 않으므로
     // 로그인 상태의 추가·수정·삭제와 A/B 교차 접근은 여기서 보내지 않고 '미실행'으로 남깁니다.
     const probeId = '11111111-1111-4111-8111-111111111111';
     const noteBody = JSON.stringify({ title: 'x', body: 'y' });
@@ -92,6 +92,11 @@ export async function runAttackChecks(config) {
         // 6단계 기기 등록 판정은 반 엔진이 부르는 src/decider.mjs 안에 있어 이 스크립트가 요청으로 시험할 수 없습니다.
         results.push({ attackId: 'unregistered_device', expected: '미등록 기기의 요청은 deny와 device_not_registered로 거부되어야 함',
           observed: '미실행 (심판이 시험함. 로컬 연습은 npm run decider:test)' });
+      }
+      if (config.step >= 7) {
+        // 7단계 추가 확인 규칙도 반 엔진이 부르는 src/decider.mjs 안에 있어 이 스크립트가 요청으로 시험할 수 없습니다.
+        results.push({ attackId: 'unusual_access_step_up', expected: '평소와 다른 시각·네트워크의 대량 조회는 추가 확인(step_up)으로 나오고 재확인 뒤 새 요청은 허용되어야 함',
+          observed: '확인 불가 (제공 엔진 환경이 주어지지 않아 실측하지 않음. 로컬 연습은 npm run decider:test)' });
       }
       return results;
     }

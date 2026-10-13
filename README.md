@@ -14,7 +14,7 @@
 
 `vercel.json`은 정적 결과물 `public`을 배포합니다. 빌드 명령 `npm run build`는 Vercel이 제공하는 GitHub 저장소 소유자·이름, 커밋 SHA, 배포 URL을 검증하고 `public/aleph.json`을 생성합니다. 이 값이 없으면 빌드가 실패하므로, 성공한 것처럼 빈 주소를 내보내지 않습니다. `aleph.json`의 내용만으로 저장소 소유권이나 방어 성공을 인정하지 않습니다. 심판이 공개 저장소의 실제 커밋과 배포된 자료를 따로 대조해야 합니다.
 
-(1단계 당시 기록. 지금 `aleph.config.json`에는 실제 저장소·배포 주소가 들어 있고 `step`은 6입니다.) `aleph.config.json`의 `repoUrl`과 `publicAppUrl`은 이전 제출 묶음 방식의 자리표시자입니다. 1단계에서는 학생이 편집하지 않습니다. 2단계 이후 코딩 도구가 필요한 설정과 보호 기능을 단계별로 작성합니다. `npm run bundle`과 `bundle-notes.json`도 1단계의 세 걸음에는 포함되지 않습니다.
+(1단계 당시 기록. 지금 `aleph.config.json`에는 실제 저장소·배포 주소가 들어 있고 `step`은 7입니다.) `aleph.config.json`의 `repoUrl`과 `publicAppUrl`은 이전 제출 묶음 방식의 자리표시자입니다. 1단계에서는 학생이 편집하지 않습니다. 2단계 이후 코딩 도구가 필요한 설정과 보호 기능을 단계별로 작성합니다. `npm run bundle`과 `bundle-notes.json`도 1단계의 세 걸음에는 포함되지 않습니다.
 
 로컬에서 가상 화면만 확인할 때는 `npm run build -- --local`을 사용합니다. 로컬 실행은 Vercel 배포나 심판 접수를 증명하지 않습니다. 저장소의 `src/attack-check.mjs`는 실제 배포가 된 뒤 `/data.json`을 비로그인으로 요청해 공개 가상 메모의 확인 표시를 읽습니다.
 
@@ -24,9 +24,50 @@
 
 `src/decider.mjs`와 `src/detect.mjs`의 로컬 시험은 반 엔진이나 운영 심판의 결과가 아닙니다. 1단계 이후 제출 묶음 계약 `aleph.defense.submission.v2`는 `scripts/bundle.mjs`에 남아 있으며, 코딩 도구가 해당 단계의 최신 배포 주소와 Git 원격을 맞춘 뒤 사용합니다.
 
-## 6단계 현재 상태: 등록한 기기만 자료실 읽기
+## 7단계 현재 상태: 평소와 다른 접속은 다시 확인
 
-- `src/decider.mjs`에 규칙 `device_registered`를 더했습니다(`RULE_IDS`: `starter.deny`, `device_registered`). 반 엔진이 넣어 준 `request.deviceRegistered`가 `true`이고 동작(`method`)이 `GET`일 때만 `allow`(이유 코드 `approved`)입니다. `false`이거나 값이 없거나 `true`가 아닌 값이면 `deny`와 `device_not_registered`입니다. 등록 기기의 쓰기(`POST`·`PUT`·`DELETE`)는 이 규칙이 허용하지 않으며, 기존 `starter.deny`가 그대로 거부합니다.
+- `src/decider.mjs`에 접속 정보 입력 검사(`readAccessInfo`)와 규칙 `step_up_required`를 더했습니다(`RULE_IDS`: `starter.deny`, `device_registered`, `step_up_required`). 기기 규칙(6단계)이 먼저이고, 그 뒤 등록 기기의 읽기(`GET`)에서만 이 규칙을 봅니다.
+- 입력 검사: 계약(`docs/DECIDER_REQUEST.md`)에 있는 `signals`와 `recentEvents`만 읽고 출처를 구분합니다. `judge_fixture`(심판의 가상 신호, 실제 위치 증거 아님), `none`(실제 경로, 정보 없음), `untrusted`(출처 불명·모양 불일치), `missing`(없음)입니다. 없거나 이상한 값은 `null`로 남고 `local`·`usual`·14시 같은 정상값으로 채우지 않습니다. `headers`·`geo`·`device` 같은 이름이 요청에 있어도 읽지 않으므로 위조한 클라이언트 헤더는 접속 정보로 승격되지 않습니다. 브라우저가 보낸 위치는 근거로 쓰지 않습니다.
+- 규칙: 심야 시각(0~5시), 처음 보는 네트워크(`unusual`), 10분(600초) 안 10건 이상의 대량 조회가 **모두** 있을 때만 `step_up`과 이유 코드 `step_up_required`를 돌려줍니다. 엔진이 다시 확인했다고 알려 준 새 요청(`stepUp.verified` 참, 나이 0~900초)은 다시 판정해 `allow`입니다. 지역은 근거가 아니라 참고 사유(`foreign_region`)이고, 지역 하나로는 추가 확인도 거부도 하지 않습니다. 이 규칙은 `deny`를 만들지 않습니다.
+- 사유 기록: 확인 전 `step_up`일 때 `step_up_required request=<요청 ID> evidence=<근거 이름들>` 한 줄을 오류 출력(stderr)에 남깁니다. 계정·기기·쿼리 지문·접속 값·토큰은 쓰지 않으며, 요청 ID가 UUID 모양이 아니면 `unknown`으로 적습니다. 이 줄이 어디에 저장되는지는 엔진 쪽 사정이라 확인할 수 없습니다.
+- 자료실 주소(`/api/notes` 등), 브라우저 화면, 6단계 기기 규칙은 바꾸지 않았습니다. 저장점에서 `aleph.config.json`의 `step`을 7로 올렸고 `scripts/deployment-identity.mjs`와 `src/attack-check.mjs`가 7단계를 받도록 고쳤습니다. 자기 점검에는 `unusual_access_step_up` 항목을 확인 불가로 추가했습니다.
+- 기준 값(0~5시, 10분 안 10건)은 요구사항에 숫자가 없어 이 파일에서 정한 연습용 값입니다. 재확인 나이 900초는 계약의 최대값입니다.
+
+### 7단계 확인 순서
+
+1. 저장소 루트에서 `npm run decider:test`를 실행합니다. 정상 결과는 네 줄이 모두 `통과`입니다: 등록 기기의 정상 요청(허용), 미등록 기기의 가상 요청(거부), 복합 이상 접속(추가 확인), 다시 확인한 복합 이상 접속(허용). 복합 이상 접속 줄에서는 사유 기록 한 줄이 함께 찍힙니다.
+2. `npm run fixture:7`: 정상 사건 `allow`, 복합 이상 사건 `step_up`이 정상입니다.
+3. `node --test test/decider-input.test.mjs test/decider-stepup.test.mjs`: 입력 검사·위조 입력·경계·기록 줄 시험 17개가 통과해야 합니다.
+4. 거부·추가 확인되어야 할 결과: 미등록 기기는 복합 이상이어도 `deny`·`device_not_registered`, 복합 이상 접속은 다시 확인하기 전까지 `step_up`, 지역만 다른 요청은 `allow`입니다.
+5. 이 명령은 가상 요청 연습이며 심판 판정이나 엔진 실측이 아닙니다.
+
+### 7단계 확인 기록
+
+| 확인 | 실행한 쪽 | 결과 |
+| --- | --- | --- |
+| `npm run decider:test` | 코딩 도구가 실제 실행, 학생도 실행 | 네 줄 모두 통과 |
+| `npm run fixture:7` | 코딩 도구가 실제 실행 | 정상 사건 `allow`, 복합 이상 사건 `step_up` |
+| 입력 검사·추가 확인 시험 2개 파일 | 코딩 도구가 실제 실행, 학생도 실행 | 17개 통과 |
+| 전체 시험 | 코딩 도구가 실제 실행 | 41개 중 40개 통과. 실패 1개는 이전 단계부터 있던 `test:package`(`api/`에 학생이 더한 파일이 시작 틀 기준표에 없음) |
+| 저장점 설정 대조: `step` 7로 가짜 Vercel 환경값을 넣은 빌드 식별, 가짜 `fetch`로 자기 점검 모양 확인 | 코딩 도구가 실제 실행 | 빌드 식별이 `step` 7·허용 경로 5개·`originalApiUrl`을 만들고 `step` 8은 거부. `repoUrl`·`publicAppUrl`·`identityProvider`·`allowedRoutes`가 구현과 일치. 자기 점검 13항목(형식·중복·길이 통과)이며 `unusual_access_step_up`은 확인 불가, 로그인 상태 점검 3개와 `unregistered_device`는 미실행. 네트워크 요청은 보내지 않음 |
+| 판정기 커밋 `467bb7c`의 푸시 | 코딩 도구가 실행 | 푸시 완료 (Vercel 배포 성공은 확인하지 못함) |
+| 저장점 커밋의 푸시·재배포 | 미실행 | 이 README를 담은 커밋은 푸시 전입니다 |
+| 제공 엔진의 재로그인 전 자료 차단과 새 요청 허용 실측 | **확인 불가** | 엔진 본체, 연결 방법, 실측 환경이 저장소와 요구사항에 주어지지 않았습니다. 요청 쪽 입력 항목(`stepUp`)만 계약에 있습니다. 가상 사건 규칙만 시험했고 실제 자료 차단은 미실행입니다 |
+| 심판의 7단계 시험 | 미실행 | 심판이 맡습니다 |
+| `npm run bundle` | 미실행 | 저장점 뒤 학생이 실행합니다. `bundle-notes.json`의 설명은 6단계 내용 그대로입니다 |
+
+### 7단계의 남은 약점 (해소되지 않음)
+
+- 실제 경로에서는 계약상 `signals`가 `none`이라 시각·네트워크 근거가 없어서, 이 규칙은 심판의 가상 신호(`judge_fixture`)에서만 작동합니다.
+- 새로 로그인했는지는 엔진이 검증해야 합니다. 판정기는 `stepUp`이 계약 모양일 때만 재확인으로 받아들이며, 계약 문서가 "이 값만 보고 재인증 확인 요청을 건너뛰지 않는다"고 한 점은 엔진에 맡겨 둔 상태입니다.
+- 이유 코드 `step_up_required`가 운영 등록부(`allowedReasonCodes`)에 있는지 확인하지 못했습니다. `decider:test`가 이 코드를 기대하는 것만 근거입니다.
+- 사건 종류(`kind`)를 구분하지 않고 최근 600초의 건수를 모두 합산합니다. `hour`의 기준 시간대(UTC인지 현지인지)는 계약에 없어 그대로 비교합니다.
+- 등록 기기의 쓰기(`POST`·`PUT`·`DELETE`)는 6단계부터 거부된 채입니다.
+- 사유 기록 줄은 stderr로만 나가며 저장소에는 보관하는 곳이 없습니다.
+
+## 6단계 기록 (7단계에서 일부 바뀜): 등록한 기기만 자료실 읽기
+
+- `src/decider.mjs`에 규칙 `device_registered`를 더했습니다(6단계 당시 `RULE_IDS`: `starter.deny`, `device_registered`. 7단계에서 `step_up_required`가 더해짐). 반 엔진이 넣어 준 `request.deviceRegistered`가 `true`이고 동작(`method`)이 `GET`일 때만 `allow`(이유 코드 `approved`)입니다. `false`이거나 값이 없거나 `true`가 아닌 값이면 `deny`와 `device_not_registered`입니다. 등록 기기의 쓰기(`POST`·`PUT`·`DELETE`)는 이 규칙이 허용하지 않으며, 기존 `starter.deny`가 그대로 거부합니다.
 - 판단에는 계약(`docs/DECIDER_REQUEST.md`)에 있는 `deviceRegistered`와 `method`만 씁니다. 계약에 없는 `request.device` 같은 값이나 브라우저가 보낸 사용자 번호·기기 상태는 쓰지 않습니다. 인증서·CA·서명 키는 만들지 않았습니다.
 - 판정기는 Vercel의 메모 API에 연결되어 있지 않고 반 엔진이 부릅니다. 자료실 주소(`/api/notes` 등)와 브라우저 화면은 바꾸지 않았습니다.
 - 저장점에서 `aleph.config.json`의 `step`을 6으로 올렸습니다. 이에 맞춰 `scripts/deployment-identity.mjs`(빌드가 만드는 `public/aleph.json`)와 `src/attack-check.mjs`가 6단계를 받도록 고쳤습니다. 자기 점검에는 `unregistered_device` 항목을 미실행으로 추가했습니다(이 스크립트는 기기 등록 요청을 보내지 않습니다).
@@ -38,7 +79,7 @@
 이번 단계에는 따로 설치할 접속 프로그램이 없습니다.
 
 1. 저장소 루트에서 `npm run decider:test`를 실행합니다.
-2. 정상 결과는 `통과 · 등록 기기의 정상 요청`과 `통과 · 미등록 기기의 가상 요청` 두 줄입니다. 첫 줄은 등록 기기 요청이 `allow`로 허용됐다는 뜻입니다. 둘째 줄은 미등록 기기 요청이 `deny`와 `device_not_registered`로 거부됐다는 뜻이며, 시험이 결정과 이유 코드를 함께 대조합니다.
+2. 정상 결과는 `통과 · 등록 기기의 정상 요청`과 `통과 · 미등록 기기의 가상 요청` 두 줄입니다(7단계 규칙이 더해진 지금은 네 줄이며 위 7단계 확인 순서를 따릅니다). 첫 줄은 등록 기기 요청이 `allow`로 허용됐다는 뜻입니다. 둘째 줄은 미등록 기기 요청이 `deny`와 `device_not_registered`로 거부됐다는 뜻이며, 시험이 결정과 이유 코드를 함께 대조합니다.
 3. 미등록 기기 요청이 허용되거나 이유 코드가 다르면 둘째 줄이 `확인 필요 · 미등록 기기의 가상 요청`으로 바뀌고 명령이 실패(종료 코드 1)합니다.
 4. 이 명령은 가상 요청 연습이며 심판 판정이 아닙니다. 미등록 기기로 들어오는 공격은 심판이 시험합니다.
 
