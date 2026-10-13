@@ -13,13 +13,13 @@ const env = {
   VERCEL_URL: 'student-defense-123.vercel.app',
 };
 
-test('저장소의 설정은 8단계이고 빌드 식별이 허용 경로와 원본 주소를 싣는다', () => {
-  assert.equal(config.step, 8);
+test('저장소의 설정은 9단계이고 빌드 식별이 허용 경로와 원본 주소를 싣는다', () => {
+  assert.equal(config.step, 9);
   const identity = deploymentIdentity(env, config);
-  assert.equal(identity.step, 8);
+  assert.equal(identity.step, 9);
   assert.deepEqual(identity.allowedRoutes, config.allowedRoutes);
   assert.equal(identity.originalApiUrl, config.originalApiUrl);
-  assert.throws(() => deploymentIdentity(env, { ...config, step: 9 }));
+  assert.throws(() => deploymentIdentity(env, { ...config, step: 10 }));
 });
 
 test('RULE_IDS에는 구현한 규칙 이름만 있다', () => {
@@ -27,7 +27,7 @@ test('RULE_IDS에는 구현한 규칙 이름만 있다', () => {
 });
 
 // 가짜 fetch만 씁니다. 실제 배포 주소·Supabase에는 요청을 보내지 않습니다.
-test('8단계 자기 점검은 모양이 맞고, 보내지 않은 점검은 미실행·확인 불가로 남는다', async () => {
+test('9단계 자기 점검은 모양이 맞고, 보내지 않은 점검은 미실행·확인 불가로 남는다', async () => {
   const realFetch = globalThis.fetch;
   const sent = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -53,6 +53,7 @@ test('8단계 자기 점검은 모양이 맞고, 보내지 않은 점검은 미�
     assert.match(byId.resource_id_header, /notes\.own/u);
     assert.match(byId.instructor_notice_edit, /HTTP 404/u);
     assert.match(byId.decider_zone_rules, /^확인 불가/u);
+    assert.match(byId.detect_compound_revocation, /^확인 불가/u);
     for (const id of ['logged_in_a_crud', 'other_user_access', 'owner_change', 'unregistered_device']) assert.match(byId[id], /^미실행/u, id);
     assert.match(byId.unusual_access_step_up, /^확인 불가/u);
     // 로그인한 계정으로 보낸 요청이 없어야 합니다: 가짜 토큰 요청 말고는 Authorization을 쓰지 않습니다.
