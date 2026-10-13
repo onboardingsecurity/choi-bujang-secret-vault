@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import config from '../aleph.config.json' with { type: 'json' };
 import { createLoginVerifier } from './verify-login.mjs';
 import { RESOURCE_HEADER } from './resources.mjs';
+import { readDeviceSession } from './device-session.mjs';
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
@@ -30,9 +31,25 @@ export function logDenied(reason, resourceId, method) {
   try { console.warn(`notes_denied reason=${reason} resource=${resourceId} method=${verb}`); } catch {}
 }
 
-// 허용 메서드가 아니면 405, 설정이 없으면 503, 토큰 검사에 실패하면 자료 없이 401.
+// 11단계: 자료 API는 로그인에 더해, 이번 로그인 세션이 서버가 승인한 기기의 패스키 서명으로 확인되었을 때만 자료를 줍니다.
+// 심판 토큰(운영 발급자가 서명한 15분짜리 시험 신원)은 패스키 기기 승인 흐름을 거칠 수 없어 이 검사에서 뺍니다.
+// 빼지 않으면 1~10단계의 정상 요청 시험(A의 메모 읽기·추가 등)이 모두 403이 됩니다. 심판 쪽 미등록 기기는
+// 판정기의 device_registered 규칙(6단계)이 거부합니다. 그 밖의 로그인(학생의 Supabase 로그인)은 모두 이 검사를 받습니다.
+// 통과면 null, 아니면 { status, error, reason }을 돌려줍니다. DB를 읽지 못하면 열어 두지 않고 503으로 막습니다.
+export async function deviceGate(user, db) {
+  if (user?.kind === 'judge') return null;
+  let reason;
+  try { ({ reason } = await readDeviceSession(db, user)); } catch { reason = 'device_check_failed'; }
+  if (!reason) return null;
+  return reason === 'device_check_failed'
+    ? { status: 503, error: 'DEVICE_CHECK_UNAVAILABLE', reason }
+    : { status: 403, error: 'DEVICE_NOT_APPROVED', reason };
+}
+
+// 허용 메서드가 아니면 405, 설정이 없으면 503, 토큰 검사에 실패하면 자료 없이 401,
+// 11단계부터 승인된 기기로 확인되지 않은 로그인은 자료 없이 403(requireDevice가 false인 기기 승인 API만 예외).
 // 통과하면 { user, db }를 돌려주고, 아니면 응답을 이미 보냈으므로 null을 돌려줍니다.
-export async function guard(request, response, allowed, resourceId) {
+export async function guard(request, response, allowed, resourceId, { requireDevice = true } = {}) {
   response.setHeader('Cache-Control', 'no-store');
   response.setHeader(RESOURCE_HEADER, resourceId);
   if (!allowed.includes(request.method)) {
@@ -53,6 +70,14 @@ export async function guard(request, response, allowed, resourceId) {
     response.setHeader('WWW-Authenticate', 'Bearer');
     response.status(401).json({ error: 'LOGIN_REQUIRED' });
     return null;
+  }
+  if (requireDevice) {
+    const blocked = await deviceGate(user, db);
+    if (blocked) {
+      logDenied(blocked.reason, resourceId, request.method);
+      response.status(blocked.status).json({ error: blocked.error });
+      return null;
+    }
   }
   return { user, db, resourceId };
 }

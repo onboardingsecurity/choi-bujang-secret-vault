@@ -3,6 +3,7 @@
 export const RESOURCE_IDS = Object.freeze({
   myNotes: 'notes.own', // 내 메모: /api/notes, /api/notes/:id
   instructorNotices: 'notices.instructor', // 강사 공지: 이 ID만 예약했고 아직 연결된 주소·자료가 없습니다.
+  myDevices: 'devices.own', // 11단계 내 기기 승인: /api/device/status·challenge·register·verify
 });
 
 export const RESOURCE_HEADER = 'X-Resource-Id';

@@ -89,7 +89,10 @@ export function createLoginVerifier({ config, supabaseSecretKey, judgeKeySet,
             || claims.role !== 'authenticated' || !UUID.test(claims.sub ?? '')
             || !Number.isSafeInteger(claims.exp)
             || claims.exp <= Math.floor(Date.now() / 1000)) return null;
-        return Object.freeze({ kind: 'student', userId: claims.sub });
+        // 11단계: 기기 승인은 이 로그인 세션에 묶습니다. session_id는 Supabase가 서명한 토큰에서만 읽고,
+        // 모양이 틀리면 null로 두어 기기 확인이 통과하지 못하게 합니다.
+        const sessionId = UUID.test(claims.session_id ?? '') ? claims.session_id.toLowerCase() : null;
+        return Object.freeze({ kind: 'student', userId: claims.sub, sessionId });
       } catch { return null; }
     }
     return null;
