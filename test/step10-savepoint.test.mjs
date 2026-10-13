@@ -13,13 +13,19 @@ const env = {
   VERCEL_URL: 'student-defense-123.vercel.app',
 };
 
-test('저장소의 설정은 9단계이고 빌드 식별이 허용 경로와 원본 주소를 싣는다', () => {
-  assert.equal(config.step, 9);
+test('저장소의 설정은 10단계이고 빌드 식별이 허용 경로·원본 주소·복원 경로를 싣는다', () => {
+  assert.equal(config.step, 10);
   const identity = deploymentIdentity(env, config);
-  assert.equal(identity.step, 9);
+  assert.equal(identity.step, 10);
+  assert.equal(identity.restoreRoute, 'POST /api/restore/note');
+  assert.ok(!config.allowedRoutes.includes(config.restoreRoute));
   assert.deepEqual(identity.allowedRoutes, config.allowedRoutes);
   assert.equal(identity.originalApiUrl, config.originalApiUrl);
-  assert.throws(() => deploymentIdentity(env, { ...config, step: 10 }));
+  assert.throws(() => deploymentIdentity(env, { ...config, step: 11 }));
+  for (const restoreRoute of [null, 'GET /api/restore/note', 'POST https://x.example/api', 'POST /api/restore/note?x=1']) {
+    assert.throws(() => deploymentIdentity(env, { ...config, restoreRoute }), /restoreRoute/u);
+  }
+  assert.equal(deploymentIdentity(env, { ...config, step: 9, restoreRoute: null }).restoreRoute, undefined);
 });
 
 test('RULE_IDS에는 구현한 규칙 이름만 있다', () => {
@@ -27,7 +33,7 @@ test('RULE_IDS에는 구현한 규칙 이름만 있다', () => {
 });
 
 // 가짜 fetch만 씁니다. 실제 배포 주소·Supabase에는 요청을 보내지 않습니다.
-test('9단계 자기 점검은 모양이 맞고, 보내지 않은 점검은 미실행·확인 불가로 남는다', async () => {
+test('10단계 자기 점검은 모양이 맞고, 보내지 않은 점검은 미실행·확인 불가로 남는다', async () => {
   const realFetch = globalThis.fetch;
   const sent = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -35,6 +41,7 @@ test('9단계 자기 점검은 모양이 맞고, 보내지 않은 점검은 미�
     sent.push(`${init.method ?? 'GET'} ${target.origin}${target.pathname}`);
     if (target.pathname === '/api/config') return Response.json({ url: 'https://example-project.supabase.co', key: 'public-placeholder' });
     if (target.pathname.startsWith('/api/notices')) return new Response(null, { status: 404 });
+    if (target.pathname === '/api/restore/note') return new Response('{"error":"LOGIN_REQUIRED"}', { status: 401, headers: { 'x-resource-id': 'notes.own' } });
     if (target.pathname.startsWith('/api/notes')) {
       return new Response('{"error":"LOGIN_REQUIRED"}', { status: 401, headers: { 'x-resource-id': 'notes.own' } });
     }
@@ -56,6 +63,10 @@ test('9단계 자기 점검은 모양이 맞고, 보내지 않은 점검은 미�
     assert.match(byId.detect_compound_revocation, /^확인 불가/u);
     for (const id of ['logged_in_a_crud', 'other_user_access', 'owner_change', 'unregistered_device']) assert.match(byId[id], /^미실행/u, id);
     assert.match(byId.unusual_access_step_up, /^확인 불가/u);
+    assert.match(byId.anonymous_restore, /POST \/api\/restore\/note → HTTP 401, 메모 내용 없음/u);
+    assert.match(byId.fake_token_restore, /HTTP 401/u);
+    assert.match(byId.restore_other_user, /^미실행/u);
+    assert.ok(sent.includes('POST https://student-defense.vercel.app/api/restore/note'));
     // 로그인한 계정으로 보낸 요청이 없어야 합니다: 가짜 토큰 요청 말고는 Authorization을 쓰지 않습니다.
     assert.ok(sent.every(line => /student-defense\.vercel\.app|supabase\.co/u.test(line)));
   } finally {

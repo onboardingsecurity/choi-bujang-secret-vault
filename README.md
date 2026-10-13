@@ -14,7 +14,7 @@
 
 `vercel.json`은 정적 결과물 `public`을 배포합니다. 빌드 명령 `npm run build`는 Vercel이 제공하는 GitHub 저장소 소유자·이름, 커밋 SHA, 배포 URL을 검증하고 `public/aleph.json`을 생성합니다. 이 값이 없으면 빌드가 실패하므로, 성공한 것처럼 빈 주소를 내보내지 않습니다. `aleph.json`의 내용만으로 저장소 소유권이나 방어 성공을 인정하지 않습니다. 심판이 공개 저장소의 실제 커밋과 배포된 자료를 따로 대조해야 합니다.
 
-(1단계 당시 기록. 지금 `aleph.config.json`에는 실제 저장소·배포 주소가 들어 있고 `step`은 9입니다.) `aleph.config.json`의 `repoUrl`과 `publicAppUrl`은 이전 제출 묶음 방식의 자리표시자입니다. 1단계에서는 학생이 편집하지 않습니다. 2단계 이후 코딩 도구가 필요한 설정과 보호 기능을 단계별로 작성합니다. `npm run bundle`과 `bundle-notes.json`도 1단계의 세 걸음에는 포함되지 않습니다.
+(1단계 당시 기록. 지금 `aleph.config.json`에는 실제 저장소·배포 주소가 들어 있고 `step`은 10입니다.) `aleph.config.json`의 `repoUrl`과 `publicAppUrl`은 이전 제출 묶음 방식의 자리표시자입니다. 1단계에서는 학생이 편집하지 않습니다. 2단계 이후 코딩 도구가 필요한 설정과 보호 기능을 단계별로 작성합니다. `npm run bundle`과 `bundle-notes.json`도 1단계의 세 걸음에는 포함되지 않습니다.
 
 로컬에서 가상 화면만 확인할 때는 `npm run build -- --local`을 사용합니다. 로컬 실행은 Vercel 배포나 심판 접수를 증명하지 않습니다. 저장소의 `src/attack-check.mjs`는 실제 배포가 된 뒤 `/data.json`을 비로그인으로 요청해 공개 가상 메모의 확인 표시를 읽습니다.
 
@@ -77,9 +77,9 @@
 
 실패를 고친 것이 아닌 커밋: `67ff4fd`·`35bae81`(2단계 저장점에서 자리표시자 주소를 실제 저장소·배포 주소로 바꿈), `1fbf583`(모든 응답에 `nosniff` 헤더 추가), `e59b9b6`(화면의 공개용 키를 `/api/config`로 옮기고 `/aleph.json`에 `allowedRoutes` 추가).
 
-## 10단계 작업 중 (저장점 전): 백업에서 자료실을 되살립니다
+## 10단계 현재 상태: 백업에서 자료실을 되살립니다
 
-침해 전에 검증한 정책·메모 사본에서 **대상만** 복원합니다. 이 절은 10단계 작업 기록이며 아직 저장점이 아닙니다(`aleph.config.json`의 `step`은 9 그대로, `scripts/deployment-identity.mjs`·`src/attack-check.mjs`는 10단계를 받도록 바꾸지 않았고 `npm run bundle`도 실행하지 않았습니다). 아래 결과는 직접 돌린 연습이며 심판 판정이 아닙니다.
+침해 전에 검증한 정책·메모 사본에서 **대상만** 복원합니다. 저장점에서 `aleph.config.json`의 `step`을 10으로 올렸고 `scripts/deployment-identity.mjs`와 `src/attack-check.mjs`가 10단계를 받도록 고쳤습니다. 빌드가 만드는 배포본 `/aleph.json`에는 10단계부터 `restoreRoute`도 실립니다(5단계에서 `originalApiUrl`이 설정에만 있어 `S05_ORIGINAL_URL_MISSING`을 받은 일을 되풀이하지 않기 위함이며, `POST /api/…` 모양이 아니면 빌드가 실패합니다). 자기 점검(`src/attack-check.mjs`)에는 복원 경로에 토큰 없는 요청(`anonymous_restore`)과 가짜 토큰 요청(`fake_token_restore`)만 실제로 보내고, 다른 로그인 계정의 복원 요청(`restore_other_user`)은 미실행으로 남겼습니다. `test/step9-savepoint.test.mjs`는 `test/step10-savepoint.test.mjs`로 바꿨습니다. 판정기 규칙은 더하지 않아 `RULE_IDS` 5개는 그대로이고 모두 구현에 쓰입니다. 아래 결과는 직접 돌린 연습이며 심판 판정이 아닙니다.
 
 ### 만든 것
 
@@ -128,7 +128,8 @@
 | Vercel Logs의 `notes_denied reason=not_owner`(복원 경로) | 학생 보고(코딩 도구는 로그 화면을 보지 못함) | 해당 줄이 있음 |
 | 정책 되돌리기의 배포본 반영 | 미실행 | 되돌린 설정을 푸시·배포해 `/aleph.json`에서 확인하지 않았음 |
 | 1~9단계 정상·금지 요청 재실행 | 일부 실행 | 시험 명령 4개(`node --test`, `decider:test`, `detect:test`, `fixture:7`)만 실행했고 나머지(배포본 `curl`, 로그인 화면, `npm run bundle`의 자기 점검 등)는 **미실행**입니다. 위 표의 상태 칸을 보세요 |
-| `npm run bundle` | 미실행 | 저장점 전이라 실행하지 않았음 |
+| 저장점 설정 대조 | 코딩 도구가 실제 실행 | `step` 10. `repoUrl`·`allowedRoutes`·`originalApiUrl`·`judgeIssuer`·`identityProvider`는 9단계와 같고 바꾸지 않았으며 `restoreRoute`는 `POST /api/restore/note`입니다. 빌드 식별(가짜 Vercel 환경값)이 `step` 10과 `restoreRoute`를 싣고 `step` 11, `restoreRoute`가 없거나 `GET`·주소 전체·쿼리가 든 값은 거부. 자기 점검(가짜 `fetch`)은 20항목으로 형식·중복·길이 통과이며 실제 배포 주소에는 요청을 보내지 않음. 전체 시험 107개 통과 |
+| `npm run bundle` | 미실행 | 저장점 커밋을 푸시한 뒤 학생이 실행합니다(배포 주소로 실제 요청을 보냄). 묶음 설명 `bundle-notes.json`은 10단계 내용으로 바꿨고 커밋하지 않습니다 |
 | 심판의 10단계 제출 | 미실행 | 제출하지 않았음 |
 
 ### 10단계의 남은 약점 (해소되지 않음)

@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -34,8 +34,8 @@ export async function runAttackChecks(config) {
     return [{ attackId: 'anonymous_note_read', expected: '비로그인 화면에서 가상 메모를 확인',
       observed: staticRead.visible ? '비로그인 요청에서 공개 가상 메모 확인 표시가 보임' : `비로그인 요청에서 확인 표시가 보이지 않음 (HTTP ${staticRead.status})` }];
   }
-  if (config.step >= 3 && config.step <= 9) {
-    // 3~9단계: 토큰 없는 요청과 가짜 토큰 요청만 실제로 보냅니다. 비밀번호는 이 파일에 넣지 않으므로
+  if (config.step >= 3 && config.step <= 10) {
+    // 3~10단계: 토큰 없는 요청과 가짜 토큰 요청만 실제로 보냅니다. 비밀번호는 이 파일에 넣지 않으므로
     // 로그인 상태의 추가·수정·삭제와 A/B 교차 접근은 여기서 보내지 않고 '미실행'으로 남깁니다.
     const probeId = '11111111-1111-4111-8111-111111111111';
     const noteBody = JSON.stringify({ title: 'x', body: 'y' });
@@ -119,6 +119,27 @@ export async function runAttackChecks(config) {
         // 9단계 탐지 함수(src/detect.mjs)는 반 엔진이 사건을 넘겨 부르는 쪽이라 이 스크립트가 요청으로 시험할 수 없습니다.
         results.push({ attackId: 'detect_compound_revocation', expected: '낯선 네트워크와 다량 조회가 함께일 때만 기기 한 개의 회수 제안(propose_revocation)이 나오고 정상 기기는 유지되어야 함',
           observed: '확인 불가 (실제 회수와 경과 시간은 심판이 가상 사건으로 확인함. 로컬 연습은 node --test test/detect-input.test.mjs)' });
+      }
+      if (config.step >= 10) {
+        // 10단계: 복원 경로에 토큰 없는 요청과 가짜 토큰 요청만 실제로 보냅니다. 복원은 로그인한 사본 소유자만 할 수 있어서
+        // 로그인한 다른 계정의 요청은 이 스크립트가 보내지 않고 '미실행'으로 남깁니다. 사본을 바꾸는 요청은 보내지 않습니다.
+        const restorePath = typeof config.restoreRoute === 'string' && config.restoreRoute.startsWith('POST /') ? config.restoreRoute.slice(5) : null;
+        const restoreBody = JSON.stringify({ id: probeId, title: 'x', body: 'y' });
+        for (const [attackId, extra] of [['anonymous_restore', {}], ['fake_token_restore', { authorization: 'Bearer aaa.bbb.ccc' }]]) {
+          const expected = '로그인 없이는 복원 경로가 거부(401)되고 메모가 보이지 않아야 함';
+          if (!restorePath) { results.push({ attackId, expected, observed: '미실행 (aleph.config.json에 restoreRoute가 없음)' }); continue; }
+          const response = await fetch(new URL(restorePath, app), {
+            method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000),
+            headers: { 'content-type': 'application/json', ...extra }, body: restoreBody,
+          });
+          let leaked = false;
+          try { leaked = response.ok || /"(title|body)"\s*:/u.test(await response.text()); } catch {
+            // An unreadable body is not a leak.
+          }
+          results.push({ attackId, expected, observed: `POST ${restorePath} → HTTP ${response.status}${leaked ? ' (메모 내용이 보임)' : ', 메모 내용 없음'}` });
+        }
+        results.push({ attackId: 'restore_other_user', expected: '사본 소유자가 아닌 로그인 계정의 복원 요청은 404로 거부되고 다른 메모는 그대로여야 함',
+          observed: '미실행 (이 스크립트는 로그인 요청을 보내지 않음. 학생이 A 시크릿 창에서 직접 확인)' });
       }
       return results;
     }

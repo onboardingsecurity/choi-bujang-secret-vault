@@ -13,6 +13,13 @@ function originalApiUrlOf(config) {
   throw new Error('5단계부터 aleph.config.json의 originalApiUrl에 쿼리 없는 원본 자료 https 주소가 필요합니다.');
 }
 
+// 10단계부터 복원 경로도 배포본 /aleph.json에 싣습니다(5단계에서 originalApiUrl이 설정에만 있어 심판이 찾지 못한 일을 되풀이하지 않기 위함).
+// 'POST /api/...' 모양의 서버 경로만 허용하며 쿼리·주소 전체는 받지 않습니다.
+function restoreRouteOf(config) {
+  if (typeof config.restoreRoute === 'string' && /^POST \/api\/[a-z0-9][a-z0-9/_-]{0,80}$/u.test(config.restoreRoute)) return config.restoreRoute;
+  throw new Error("10단계부터 aleph.config.json의 restoreRoute에 'POST /api/...' 모양의 복원 경로가 필요합니다.");
+}
+
 export function deploymentIdentity(env, config) {
   const owner = env.VERCEL_GIT_REPO_OWNER;
   const repo = env.VERCEL_GIT_REPO_SLUG;
@@ -21,7 +28,7 @@ export function deploymentIdentity(env, config) {
   if (env.VERCEL_GIT_PROVIDER !== 'github' || !OWNER.test(owner || '')
       || !REPO.test(repo || '') || repo === '.' || repo === '..'
       || repo.toLowerCase().endsWith('.git') || !SHA.test(commit || '')
-      || !HOST.test(host || '') || ![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(config?.step)
+      || !HOST.test(host || '') || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(config?.step)
       || typeof config.judgeIssuer !== 'string'
       || !/^https:\/\/[a-z0-9-]+\.up\.railway\.app\/defense\/judge$/iu.test(config.judgeIssuer)
       || typeof config.sampleMarker !== 'string'
@@ -38,5 +45,6 @@ export function deploymentIdentity(env, config) {
     sampleMarker: config.sampleMarker,
     ...(config.step >= 3 && Array.isArray(config.allowedRoutes) ? { allowedRoutes: config.allowedRoutes } : {}),
     ...(config.step >= 5 ? { originalApiUrl: originalApiUrlOf(config) } : {}),
+    ...(config.step >= 10 ? { restoreRoute: restoreRouteOf(config) } : {}),
   };
 }
