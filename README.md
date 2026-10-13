@@ -33,7 +33,7 @@
 | 9단계 | `a06fe52` | `S09_NO_PROPOSAL` | `4d859b2` | 통과(학생 보고) |
 | 8단계 | `686a4bb` | `S08_OTHER_ZONE_ALLOWED` | `f3010d7` | 통과(학생 보고) |
 | 7단계 | `ba8b88f`, 2차 `59b4eab` | `S07_SAME_VERDICT` 두 번 | `10d569d` | 3차 통과(학생 보고) |
-| 5단계 | `e78d6db` | `S05_ORIGINAL_URL_MISSING` | `edb4aa4` | 통과(학생 보고) |
+| 5단계 | `e78d6db` | `S05_ORIGINAL_URL_MISSING` | `edb4aa4` | `e59b9b6`로 통과(학생 보고) |
 
 ### S09_NO_PROPOSAL: 복합 의심 사건에 회수 제안이 없음
 
@@ -64,7 +64,7 @@
 - 원인: `e78d6db`(5단계 저장점)는 `originalApiUrl`을 `aleph.config.json`에만 적었고, 빌드가 만드는 배포본 `/aleph.json`(`scripts/deployment-identity.mjs`)에는 싣지 않았습니다. 심판이 배포본에서 주소를 찾지 못한 것으로 보입니다.
 - 해결(`edb4aa4`, `scripts/deployment-identity.mjs`): `originalApiUrlOf`를 더해 5단계 이상에서 `/aleph.json`에 `originalApiUrl`을 싣고, 쿼리·해시·계정 정보가 없는 `https` 경로가 아니면 빌드를 실패시킵니다.
 - 재현(수정 전 → 후): 같은 5단계 설정으로 만든 `/aleph.json`에 `originalApiUrl`이 없음 → 있음.
-- 확인: 배포본 `/aleph.json`에 값이 실린 것은 8단계 저장점 대조에서 읽기 요청으로 확인했습니다. 재제출한 커밋이 `edb4aa4`인지 다음 날의 `e59b9b6`인지는 기록이 없지만, `e59b9b6`도 이 부분을 그대로 갖고 있습니다.
+- 확인: 배포본 `/aleph.json`에 값이 실린 것은 8단계 저장점 대조에서 읽기 요청으로 확인했습니다. 통과한 재제출 커밋은 `e59b9b6`(2026-10-07)입니다(학생이 알려 줌). `e59b9b6`은 화면의 공개 키를 `/api/config`로 옮기고 `/aleph.json`에 `allowedRoutes`를 더한 커밋이며, 코드를 비교하면 `edb4aa4`의 `originalApiUrl` 부분을 그대로 갖고 있어 이 수정이 들어 있습니다. `edb4aa4`(10-06) 자체를 제출했는지는 기록이 없습니다.
 
 ### 심판 결과가 아닌 실패와 해결
 
@@ -101,18 +101,18 @@
 
 | 순서 | 단계 | 정상 요청 | 거부되어야 할 요청 | 방법 | 상태 |
 | --- | --- | --- | --- | --- | --- |
-| 0 | 10 | `node src/policy-diff.mjs`가 `차이 없음` | 사본을 지우거나 고치면 중단(종료 코드 1) | 저장소 루트 | 정책 차이 보기는 실행함(차이 없음). **복구 뒤 재실행은 미실행** |
+| 0 | 10 | `node src/policy-diff.mjs`가 `차이 없음` | 사본을 지우거나 고치면 중단(종료 코드 1) | 저장소 루트 | 메모 복원 시험 뒤 코딩 도구가 실행: `차이 없음` |
 | 1 | 1 | 배포 주소 `/`가 열림 | 공개 `/data.json`이 열리면 안 됨 → 404 | 브라우저·`curl -i <배포주소>/data.json` | **미실행** |
 | 2 | 2 | 화면 메모는 로그인 뒤에만 보임 | GitHub 최신 파일과 배포 `/` 원본에 가상 메모 문장이 없어야 함 | 위 「2단계 확인 절차」의 검색식 | **미실행** |
 | 3 | 3 | A로 로그인해 메모 추가·수정·삭제 | 로그인 없는 `/api/notes`와 가짜 토큰은 401 | 시크릿 창, `curl -i <배포주소>/api/notes` | **미실행** |
 | 4 | 4 | A가 자기 메모를 읽기·추가·수정·삭제 | A가 B의 메모 ID로 읽기·수정·삭제하면 404, 남의 `owner_id`를 본문에 보내면 403 | A·B 시크릿 창 | A의 B 메모 읽기 404는 실행함(아래). 나머지는 **미실행** |
 | 5 | 5 | `/aleph.json`에 `originalApiUrl`이 있음 | anon 키로 원본 API를 직접 읽으면 거부(401) | `npm run bundle`의 자기 점검(배포 주소로 실제 요청을 보내므로 학생이 실행) | **미실행** |
-| 6 | 6 | 등록 기기의 `GET`은 허용 | 미등록 기기는 `deny`(`device_not_registered`) | `npm run decider:test` | **미실행**(전체 시험에는 포함되어 복구 전 107개 통과) |
-| 7 | 7 | 정상 접속은 `allow` | 복합 이상 접속은 `step_up` | `npm run fixture:7`, `npm run decider:test` | **미실행** |
-| 8 | 8 | 내 메모 한 건 `GET`·`PUT`은 허용 | 메모 목록·공지 쓰기는 `deny`, 로그인 없는 `/api/notes`는 401과 `X-Resource-Id: notes.own`, B의 A 자료 요청은 404 | `node --test "test/*.test.mjs"`, `curl -i <배포주소>/api/notes`, A·B 시크릿 창 | B→A 요청은 아래 「복원 시험」에서 반대 방향(A→B)만 실행함. 나머지는 **미실행** |
-| 9 | 9 | 정상 사건은 제안 없음 | 복합 의심 사건과 120건 초과 조회는 `propose_revocation` | `npm run detect:test`(6줄 모두 `통과`) | **미실행**(전체 시험에는 포함) |
+| 6 | 6 | 등록 기기의 `GET`은 허용 | 미등록 기기는 `deny`(`device_not_registered`) | `npm run decider:test` | 메모 복원 시험 뒤 네 줄 모두 `통과`(코딩 도구가 실제 실행, 학생 보고도 같음) |
+| 7 | 7 | 정상 접속은 `allow` | 복합 이상 접속은 `step_up` | `npm run fixture:7`, `npm run decider:test` | `decider:test` 위와 같음. `fixture:7`은 정상 사건 `allow`, 복합 이상 사건 `step_up`(코딩 도구가 실제 실행) |
+| 8 | 8 | 내 메모 한 건 `GET`·`PUT`은 허용 | 메모 목록·공지 쓰기는 `deny`, 로그인 없는 `/api/notes`는 401과 `X-Resource-Id: notes.own`, B의 A 자료 요청은 404 | `node --test "test/*.test.mjs"`, `curl -i <배포주소>/api/notes`, A·B 시크릿 창 | `node --test` 107개 모두 통과(코딩 도구가 실제 실행, 학생 보고도 같음). 아래 「복원 시험」에서 A→B 요청 404만 실행했고 B→A 요청과 `curl` 점검은 **미실행** |
+| 9 | 9 | 정상 사건은 제안 없음 | 복합 의심 사건과 120건 초과 조회는 `propose_revocation` | `npm run detect:test`(6줄 모두 `통과`) | 6줄 모두 `통과`(코딩 도구가 실제 실행, 학생 보고도 같음) |
 
-복구가 제대로 됐다면 위 순서 끝에서 확인할 것: 정책 사본과 현재가 같고(`node src/policy-diff.mjs`), 되살린 메모는 소유자 본인에게만 보이며, 전에 거부되던 요청(공개 `/data.json`, 로그인 없는 요청, 남의 메모, 미등록 기기, 이상 접속)이 다시 거부됩니다. 이 순서를 모두 실행한 결과는 아직 없습니다.
+복구가 제대로 됐다면 위 순서 끝에서 확인할 것: 정책 사본과 현재가 같고(`node src/policy-diff.mjs`), 되살린 메모는 소유자 본인에게만 보이며, 전에 거부되던 요청(공개 `/data.json`, 로그인 없는 요청, 남의 메모, 미등록 기기, 이상 접속)이 다시 거부됩니다. 이 순서 중 실행한 것은 위 표의 상태 칸에 적었고, 나머지는 미실행입니다.
 
 ### 10단계 확인 기록
 
@@ -125,9 +125,9 @@
 | 시험 계정 B의 가상 메모 1건 복원 시험 | 학생이 B 화면 콘솔에서 실행, 결과는 학생 보고(코딩 도구는 응답을 직접 보지 못함) | 사본과 같을 때 `dryRun`은 `none`. 본문을 수정한 뒤 `dryRun`은 `update`, 복원 실행은 `verified: true`이고 새로고침한 화면의 본문이 돌아왔으며 한 번 더 실행하면 `none`. 메모를 삭제한 뒤 `dryRun`은 `insert`, 복원은 `201`과 `verified: true`이고 새로고침한 화면에 메모가 돌아옴 |
 | 계정 A의 시크릿 창에서 B의 메모 복원 요청·읽기 요청, A의 목록 요청 | 학생이 실행, 코딩 도구가 콘솔 화면 사진 확인 | 복원 요청 `404 NOT_FOUND`, B의 메모 읽기 `404 NOT_FOUND`, A의 목록 `200`(메모 1건, B의 메모 포함 `false`). 두 404는 서버가 거부한 정상 결과이고 브라우저가 빨간 오류로 표시했을 뿐입니다 |
 | 위 A 요청 뒤 B 화면의 메모가 그대로인지 | 학생 보고(코딩 도구는 화면을 보지 못함) | 그대로임 |
-| Vercel Logs의 `notes_denied reason=not_owner`(복원 경로) | 미실행 | 로그 화면을 확인하지 않았음 |
+| Vercel Logs의 `notes_denied reason=not_owner`(복원 경로) | 학생 보고(코딩 도구는 로그 화면을 보지 못함) | 해당 줄이 있음 |
 | 정책 되돌리기의 배포본 반영 | 미실행 | 되돌린 설정을 푸시·배포해 `/aleph.json`에서 확인하지 않았음 |
-| 1~9단계 정상·금지 요청 재실행 | 미실행 | 위 표의 순서를 아직 실행하지 않았음 |
+| 1~9단계 정상·금지 요청 재실행 | 일부 실행 | 시험 명령 4개(`node --test`, `decider:test`, `detect:test`, `fixture:7`)만 실행했고 나머지(배포본 `curl`, 로그인 화면, `npm run bundle`의 자기 점검 등)는 **미실행**입니다. 위 표의 상태 칸을 보세요 |
 | `npm run bundle` | 미실행 | 저장점 전이라 실행하지 않았음 |
 | 심판의 10단계 제출 | 미실행 | 제출하지 않았음 |
 
@@ -441,7 +441,7 @@
 | B의 타인 메모 접근 404 | 미실행 | 이번 단계에서 확인하지 않음 |
 | `npm run bundle` 자기 점검의 로그인 상태 점검 | 미실행 | 미실행 |
 | 심판의 5단계 첫 제출(저장점 `e78d6db` 뒤) | 학생 보고(커밋 `edb4aa4` 설명에 기록) | `S05_ORIGINAL_URL_MISSING`으로 거부. 당시 `originalApiUrl`은 `aleph.config.json`에만 있고 빌드가 만드는 배포본 `/aleph.json`에는 없었습니다 |
-| S05 수정 뒤 재제출 | 학생 보고 | 5단계 통과. 수정 `edb4aa4`는 빌드가 만드는 `/aleph.json`에 `originalApiUrl`을 싣는 것 하나였습니다. 재제출한 커밋이 `edb4aa4`인지, 다음 날의 `e59b9b6`(화면의 공개 키를 `/api/config`로 옮기고 `/aleph.json`에 `allowedRoutes` 추가)인지는 기록이 없습니다(로컬 푸시 기록은 10-13부터만 남아 있음). 코드를 비교하면 `e59b9b6`도 `edb4aa4`의 `originalApiUrl` 부분을 그대로 갖고 있어, 어느 커밋을 냈든 S05 수정은 들어 있었습니다 |
+| S05 수정 뒤 재제출 | 학생 보고 | 5단계 통과. 수정 `edb4aa4`는 빌드가 만드는 `/aleph.json`에 `originalApiUrl`을 싣는 것 하나였습니다. 통과한 재제출 커밋은 다음 날의 `e59b9b6`(화면의 공개 키를 `/api/config`로 옮기고 `/aleph.json`에 `allowedRoutes` 추가)입니다(학생이 알려 줌). 코드를 비교하면 `e59b9b6`은 `edb4aa4`의 `originalApiUrl` 부분을 그대로 갖고 있어 S05 수정이 들어 있었습니다. 로컬 푸시 기록은 10-13부터만 남아 있어 제출 시각은 확인할 수 없습니다 |
 | 배포본 `/aleph.json`의 `originalApiUrl` | 코딩 도구가 읽기 요청(8단계 저장점 대조) | 실려 있고 `aleph.config.json`의 값과 같음 |
 
 ### 5단계의 남은 약점 (해소되지 않음)
