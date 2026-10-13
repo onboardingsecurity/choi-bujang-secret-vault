@@ -1,6 +1,12 @@
 {
   "schema": "aleph.note.snapshot.v1",
   "version": "9단계-통과-시점",
-  "notes": [],
-  "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  "notes": [
+    {
+      "id": "5c6128ef-a76c-4caa-94fc-b0dd10a7eed3",
+      "ownerSha256": "58b058a9c855d358d7594a9fc693e47d84a468cce05cf178beed1924d9e2d745",
+      "contentSha256": "dee928e75c6573bd04dc9130599b898a05d8faec6453225b1255536ebf052314"
+    }
+  ],
+  "sha256": "6342a63983c091846e8dcc0d064efe9ff78369e7fb3d87f8e1f41f6ebcaa6818"
 }
