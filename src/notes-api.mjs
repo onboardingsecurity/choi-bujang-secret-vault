@@ -2,7 +2,7 @@
 // 브라우저가 보낸 userId·role·owner_id는 읽지 않습니다. 사용자 ID는 검사를 통과한 토큰에서만 나옵니다.
 import { createClient } from '@supabase/supabase-js';
 import config from '../aleph.config.json' with { type: 'json' };
-import { createLoginVerifier } from '../src/verify-login.mjs';
+import { createLoginVerifier } from './verify-login.mjs';
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 

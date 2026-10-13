@@ -1,6 +1,6 @@
 // 4단계: GET /api/notes (내 메모 목록), POST /api/notes (추가).
 // 목록은 검증된 사용자 ID의 owner_id만 읽고, 추가할 때 owner_id는 항상 검증된 ID로 저장합니다.
-import { guard, readFields, toNote, triesOwnerChange, UUID } from '../_notes.js';
+import { guard, readFields, toNote, triesOwnerChange, UUID } from '../../src/notes-api.mjs';
 
 export default async function handler(request, response) {
   const ctx = await guard(request, response, ['GET', 'POST']);

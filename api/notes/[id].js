@@ -1,6 +1,6 @@
 // 4단계: GET·PUT·DELETE /api/notes/:id. 검증된 사용자 ID와 DB의 owner_id가 같은 메모만 허용합니다.
 // 남의 메모와 없는 메모는 같은 404로 답해서 id의 존재를 알려 주지 않습니다.
-import { guard, isOwner, readFields, toNote, triesOwnerChange, UUID } from '../_notes.js';
+import { guard, isOwner, readFields, toNote, triesOwnerChange, UUID } from '../../src/notes-api.mjs';
 
 export default async function handler(request, response) {
   const ctx = await guard(request, response, ['GET', 'PUT', 'DELETE']);

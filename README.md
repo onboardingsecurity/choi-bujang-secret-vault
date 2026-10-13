@@ -48,7 +48,7 @@
 | `npm run decider:test` | 코딩 도구가 실제 실행, 학생도 실행 | 네 줄 모두 통과 |
 | `npm run fixture:7` | 코딩 도구가 실제 실행 | 정상 사건 `allow`, 복합 이상 사건 `step_up` |
 | 입력 검사·추가 확인 시험 2개 파일 | 코딩 도구가 실제 실행(학생은 17개였을 때 실행) | 19개 통과 (격리 환경 시험, 기록 실패 시험 포함) |
-| 전체 시험 | 코딩 도구가 실제 실행 | 43개 중 42개 통과. 실패 1개는 이전 단계부터 있던 `test:package`(`api/`에 학생이 더한 파일이 시작 틀 기준표에 없음) |
+| 전체 시험 | 코딩 도구가 실제 실행 | 43개 통과(당시 `test:package` 1개 실패는 `api/` 위치 이동으로 해소, 아래 줄 참고) |
 | 저장점 설정 대조: `step` 7로 가짜 Vercel 환경값을 넣은 빌드 식별, 가짜 `fetch`로 자기 점검 모양 확인 | 코딩 도구가 실제 실행 | 빌드 식별이 `step` 7·허용 경로 5개·`originalApiUrl`을 만들고 `step` 8은 거부. `repoUrl`·`publicAppUrl`·`identityProvider`·`allowedRoutes`가 구현과 일치. 자기 점검 13항목(형식·중복·길이 통과)이며 `unusual_access_step_up`은 확인 불가, 로그인 상태 점검 3개와 `unregistered_device`는 미실행. 네트워크 요청은 보내지 않음 |
 | 판정기 커밋 `467bb7c`의 푸시 | 코딩 도구가 실행 | 푸시 완료 (Vercel 배포 성공은 확인하지 못함) |
 | 저장점 커밋 `ba8b88f`의 푸시 | 코딩 도구가 실행 | 푸시 완료 (배포본은 아래 `/aleph.json` 줄) |
@@ -144,7 +144,7 @@
 - IPv6 주소는 후보에서 빠집니다(알림 로그에는 남습니다). `alerts.log`는 계속 쌓이고 정리 규칙이 없습니다.
 - 주소 단위 차단뿐이라 주소를 바꾸는 공격과 공용 주소(NAT) 사정은 구분하지 못합니다.
 - 기준 값(8회)은 연습 경보에 맞춘 값이고 시험 자료도 가짜입니다. 심판 경보의 형식은 이 저장소에서 확인할 수 없습니다.
-- `npm run test:package`는 이전 단계부터 실패합니다. 이번 보너스와 무관하고 고치지 않았습니다.
+- `npm run test:package`는 이전 단계부터 실패했으나, `api/config.js`를 `api/config/index.js`로, `api/_notes.js`를 `src/notes-api.mjs`로 옮겨 통과합니다(주소·동작 불변, 시험·기준표는 고치지 않음).
 
 ## 보너스: 무차별 로그인 공격 탐지 현재 상태
 
@@ -184,7 +184,7 @@
 - 주소 단위 차단뿐이라 주소를 바꾸는 공격과 공용 주소(NAT) 사정은 구분하지 못합니다.
 - 비밀번호 정보가 없는 낱개 경보의 느린 스프레이(15건 미만)는 alert에 머뭅니다.
 - 기준 값(15건·5계정)은 연습 경보에 맞춘 값이고 시험 자료도 가짜입니다. 심판 경보의 형식은 이 저장소에서 확인할 수 없습니다.
-- `npm run test:package`는 이전 단계부터 실패합니다(`api/`에 학생이 더한 파일이 시작 틀 기준표에 없음). 이번 보너스와 무관하고 고치지 않았습니다.
+- `npm run test:package`는 이전 단계부터 실패했으나, `api/config.js`를 `api/config/index.js`로, `api/_notes.js`를 `src/notes-api.mjs`로 옮겨 통과합니다(주소·동작 불변, 시험·기준표는 고치지 않음).
 
 ## 5단계 현재 상태
 
@@ -219,7 +219,7 @@
 
 ## 4단계 기록 (5단계에서 일부 바뀜)
 
-- 서버(`api/_notes.js`, `api/notes/index.js`, `api/notes/[id].js`)가 검증된 사용자 ID와 DB의 `owner_id`를 비교합니다. 읽기·수정·삭제는 본인 메모만 되고, 남의 메모와 `owner_id`가 빈 메모는 없는 메모와 같은 404로 거부합니다(id의 존재를 알려 주지 않음). 수정·삭제는 SQL 조건에도 `owner_id = 본인`을 다시 걸어 확인 직후 바뀌는 경우도 막습니다.
+- 서버(`src/notes-api.mjs`, `api/notes/index.js`, `api/notes/[id].js`)가 검증된 사용자 ID와 DB의 `owner_id`를 비교합니다. 읽기·수정·삭제는 본인 메모만 되고, 남의 메모와 `owner_id`가 빈 메모는 없는 메모와 같은 404로 거부합니다(id의 존재를 알려 주지 않음). 수정·삭제는 SQL 조건에도 `owner_id = 본인`을 다시 걸어 확인 직후 바뀌는 경우도 막습니다.
 - 추가·수정 본문에 본인이 아닌 `owner_id`가 들어 있으면 403으로 거부합니다. 추가할 때 `owner_id`는 항상 검증된 토큰의 사용자 ID로 저장합니다. 한 건 응답은 `{id,title,body}`, 수정 본문은 `{title,body}`이며 `owner_id`는 응답에 나가지 않습니다. 허용 경로는 3단계와 같습니다.
 - (5단계에서 `authenticated`의 직접 권한은 회수됨) DB(`public.notes`)는 `PUBLIC`·`anon`·`authenticated`의 권한을 회수한 뒤 `authenticated`에 SELECT·INSERT·UPDATE·DELETE만 주고, RLS 정책 4개(`notes_select_own`, `notes_insert_own`, `notes_update_own`, `notes_delete_own`)가 `auth.uid() = owner_id`일 때만 허용합니다. UPDATE는 기존 행(USING)과 새 행(WITH CHECK)을 모두 검사합니다. 앱 API는 서버 키(`service_role`)로 RLS를 우회하므로, 앱에서의 본인 행 제한은 위 API 검사가 맡고 RLS는 Data API 직접 접근을 막는 장치입니다. 이 SQL은 저장소에 없고 학생이 SQL Editor에서 직접 실행했습니다.
 - 소유자 연결: 기존 가상 메모 3건은 계정 A, 시험 메모 `SAMPLE_NOTE_B_1`은 계정 B 소유입니다. 가상 메모 `훈련 행정 자료` 1건은 `owner_id`가 비어 있어 일부러 남겼고, 누구도 접근할 수 없어야 합니다.
@@ -247,7 +247,7 @@
 ## 3단계 기록 (4단계에서 일부 바뀜)
 
 - 화면(`/`)에서 Supabase Auth 이메일·비밀번호로 로그인·로그아웃합니다. 로그인 전에는 메모가 보이지 않고, 로그인 실패 이유는 화면에 표시됩니다.
-- 서버(`api/_notes.js`)가 요청의 `Authorization: Bearer` 토큰을 `src/verify-login.mjs`로 검사합니다. 토큰이 없거나 검사에 실패하면 자료 없이 401로 거부합니다. 본문의 `userId`·`role`·`owner_id`는 읽지 않고, 추가할 때 `owner_id`는 검사를 통과한 토큰의 사용자 ID로 저장합니다.
+- 서버(`src/notes-api.mjs`)가 요청의 `Authorization: Bearer` 토큰을 `src/verify-login.mjs`로 검사합니다. 토큰이 없거나 검사에 실패하면 자료 없이 401로 거부합니다. 본문의 `userId`·`role`·`owner_id`는 읽지 않고, 추가할 때 `owner_id`는 검사를 통과한 토큰의 사용자 ID로 저장합니다.
 - 로그인한 계정은 가상 메모를 추가·수정·삭제할 수 있습니다. 경로는 `GET·POST /api/notes`, `GET·PUT·DELETE /api/notes/:id`이며 `aleph.config.json`의 `allowedRoutes`에 같은 목록이 있습니다. 목록 GET은 내 `owner_id`의 메모만 돌려줍니다.
 - 로그인 발급자 정보(`identityProvider`: 발급자·공개키 주소·대상)는 `aleph.config.json`에 있고 비밀 키는 없습니다. 화면 소스에는 키를 적지 않고, 로그인에 쓰는 Project URL과 publishable key는 서버 함수 `/api/config`(환경변수 `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`)가 내려 줍니다. 브라우저가 Auth를 직접 호출하므로 이 공개용 값은 실행 중 브라우저에 내려옵니다. 서버 전용 키는 Vercel 환경변수 `SUPABASE_SECRET_KEY`에만 있습니다.
 - DB는 `notes` 표에 `note_id uuid`(API의 `id`)와 `service_role`의 추가·수정·삭제 권한을 학생이 SQL Editor에서 직접 더한 상태여야 합니다.
