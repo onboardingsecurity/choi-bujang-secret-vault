@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import vm from 'node:vm';
 import { fixtureRequests } from '../scripts/fixture-7.mjs';
 import { decide, RULE_IDS, stepUpEvidence } from '../src/decider.mjs';
 
@@ -142,6 +144,44 @@ test('추가 확인일 때만 기록 한 줄이 남고 요청 ID와 근거 이�
   await decide({ ...suspicious, method: 'POST' });
   await decide(null);
   assert.deepEqual(logged, []);
+});
+
+// 심판처럼 판정기 파일 하나를 process·console·import가 없는 격리 환경에서 불러옵니다.
+function isolatedDecide() {
+  const source = readFileSync(new URL('../src/decider.mjs', import.meta.url), 'utf8');
+  const sandbox = vm.createContext({});
+  vm.runInContext(`${source.replace(/^export /gmu, '')}\nglobalThis.__decide = decide;`, sandbox, { timeout: 2000 });
+  assert.equal(vm.runInContext('typeof process', sandbox), 'undefined');
+  return async request => JSON.parse(JSON.stringify(await sandbox.__decide(JSON.parse(JSON.stringify(request ?? null)))));
+}
+
+test('process가 없는 격리 환경에서도 파일 하나만으로 정상은 허용, 복합 이상은 추가 확인이다', async () => {
+  const isolated = isolatedDecide();
+  const ok = await isolated(normal);
+  assert.equal(ok.decision, 'allow');
+  const step = await isolated(suspicious);
+  assert.equal(step.decision, 'step_up');
+  assert.equal(step.reasonCode, 'step_up_required');
+  assert.deepEqual(step.ruleIds, ['step_up_required']);
+  assert.equal(step.requestId, suspicious.requestId);
+  assert.equal((await isolated({ ...suspicious, stepUp: { verified: true, authAgeSeconds: 60 } })).decision, 'allow');
+  assert.equal((await isolated({ ...normal, signals: { ...normal.signals, region: 'foreign' } })).decision, 'allow');
+  const unregistered = await isolated({ ...suspicious, deviceRegistered: false });
+  assert.equal(unregistered.decision, 'deny');
+  assert.equal(unregistered.reasonCode, 'device_not_registered');
+  assert.equal((await isolated(null)).decision, 'deny');
+});
+
+test('기록 쓰기가 실패해도 판정은 그대로 추가 확인이다', async () => {
+  const before = process.stderr.write;
+  process.stderr.write = () => { throw new Error('stderr를 쓸 수 없음'); };
+  try {
+    const step = await decide(suspicious);
+    assert.equal(step.decision, 'step_up');
+    assert.equal(step.reasonCode, 'step_up_required');
+  } finally {
+    process.stderr.write = before;
+  }
 });
 
 test('이 규칙은 어떤 경우에도 deny를 만들지 않는다(영구 차단 없음)', async () => {

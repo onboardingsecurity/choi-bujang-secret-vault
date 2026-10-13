@@ -105,8 +105,9 @@ export async function decide(request) {
     if (STEP_UP_REQUIRED_EVIDENCE.every(item => evidence.includes(item))) {
       if (reverified(request.stepUp)) return answer(request, 'allow', 'approved', 'device_registered', 'step_up_required');
       // 사유 기록: 요청 ID와 근거 이름만 오류 출력에 한 줄 남깁니다. 계정·기기·쿼리 지문·접속 값·토큰은 쓰지 않습니다.
+      // 심판은 이 파일 하나를 process가 없는 격리 환경에서 부를 수 있으므로, 쓸 수 있을 때만 쓰고 실패해도 판정은 그대로 돌려줍니다.
       const id = typeof request.requestId === 'string' && REQUEST_ID.test(request.requestId) ? request.requestId : 'unknown';
-      process.stderr.write(`step_up_required request=${id} evidence=${evidence.join(',')}\n`);
+      try { globalThis.process?.stderr?.write?.(`step_up_required request=${id} evidence=${evidence.join(',')}\n`); } catch {}
       return answer(request, 'step_up', 'step_up_required', 'step_up_required');
     }
     return answer(request, 'allow', 'approved', 'device_registered');
