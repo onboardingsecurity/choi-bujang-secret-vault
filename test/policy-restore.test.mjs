@@ -55,3 +55,19 @@ test('변조된 사본으로는 계획도 만들지 않는다', () => {
   tampered.policy.allowedRoutes.push('GET /api/evil');
   assert.throws(() => planRestore(tampered, config(routes)), PolicyCopyError);
 });
+
+test('쓰기 직전에 다시 읽은 사본이 없거나 틀리거나 바뀌었으면 아무것도 쓰지 않는다', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'restore-'));
+  const path = join(dir, 'aleph.config.json');
+  const current = config(['GET /api/notes', 'GET /api/evil']);
+  writeFileSync(path, JSON.stringify(current));
+  const plan = planRestore(snap(), current);
+  const changed = buildSnapshot('v-other', { rules: [...RULE_IDS], allowedRoutes: ['GET /api/notes'] });
+  const tampered = snap();
+  tampered.policy.allowedRoutes.push('GET /api/evil');
+  const missing = () => { throw new PolicyCopyError('정책 사본이 없습니다'); };
+  for (const reload of [missing, () => tampered, () => changed]) {
+    assert.throws(() => applyRestore(plan, snap(), pathToFileURL(path), reload), PolicyCopyError);
+    assert.deepEqual(JSON.parse(readFileSync(path, 'utf8')), current);
+  }
+});

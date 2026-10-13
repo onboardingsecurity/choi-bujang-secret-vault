@@ -4,7 +4,7 @@
 // 기본 실행은 미리보기입니다. 실제 변경은 --apply 와 --confirm=<사본 해시 앞 12자리> 를 함께 줘야 합니다.
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { PolicyCopyError, currentPolicy, diffPolicy, formatDiff, loadSnapshot } from './policy-diff.mjs';
+import { PolicyCopyError, currentPolicy, diffPolicy, formatDiff, loadSnapshot, verifySnapshot } from './policy-diff.mjs';
 
 const CONFIG_URL = new URL('../aleph.config.json', import.meta.url);
 
@@ -31,8 +31,12 @@ export const formatPlan = (plan) => [
   ...(plan.rulesNeedManualFix ? ['  ! 판정기 규칙 이름이 사본과 다릅니다. 이 절차는 코드를 고치지 않습니다. git 이력으로 src/decider.mjs를 직접 확인하세요.'] : []),
 ].join('\n');
 
+// 쓰기 직전에 사본을 다시 읽어(reloadSnapshot) 검증하고, 미리보기에서 보여 준 사본과 같은 버전·해시일 때만 씁니다.
+// 사본이 없어졌거나 검증에 실패했거나 그 사이에 바뀌었으면 아무것도 쓰지 않고 중단합니다.
 // 새 설정을 임시 파일에 쓴 뒤 바꿔 끼우고, 다시 읽어 allowedRoutes만 사본과 같고 나머지는 그대로인지 확인합니다.
-export const applyRestore = (plan, snapshot, configPath) => {
+export const applyRestore = (plan, snapshot, configPath, reloadSnapshot = () => snapshot) => {
+  const fresh = verifySnapshot(reloadSnapshot());
+  if (fresh.sha256 !== snapshot.sha256 || fresh.version !== snapshot.version) throw new PolicyCopyError('미리보기 뒤 사본이 바뀌었습니다. 처음부터 다시 실행하세요');
   const before = JSON.parse(readFileSync(configPath, 'utf8'));
   const temp = `${fileURLToPath(configPath)}.restore.tmp`;
   writeFileSync(temp, `${JSON.stringify(plan.nextConfig, null, 2)}\n`);
@@ -61,7 +65,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     } else if (!plan.changes.length) {
       console.log('\n바꿀 항목이 없어 아무것도 쓰지 않았습니다.');
     } else {
-      applyRestore(plan, snapshot, CONFIG_URL);
+      applyRestore(plan, snapshot, CONFIG_URL, () => loadSnapshot());
       console.log('\n복원 완료: allowedRoutes를 사본과 같게 되돌렸고 다른 키는 그대로임을 다시 읽어 확인했습니다.');
       if (plan.rulesNeedManualFix) process.exitCode = 2;
     }
