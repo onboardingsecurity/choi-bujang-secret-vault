@@ -97,15 +97,15 @@ function reverified(stepUp) {
 
 // 8단계 구역 규칙: 엔진이 확인한 사용자(subjectId)·기기(deviceId)·메서드·정확한 경로(route와 path)가 아래 표와 맞을 때만 구역이 정해집니다.
 // 표에 없는 경로·메서드는 구역이 없고 맨 아래 starter.deny가 거부합니다(알 수 없는 경로는 거부).
-// own_notes_zone(자원 ID notes.own): 내 메모 목록 읽기, 한 건 읽기·수정. 메모 주인은 계약에 없어 여기서 가리지 못하므로,
+// own_notes_zone(자원 ID notes.own): 내 메모 한 건 읽기·수정. 메모 주인은 계약에 없어 여기서 가리지 못하므로,
 //   B가 A의 메모 ID를 고른 요청은 최종 자료 API가 저장된 owner_id와 대조해 막습니다.
+//   메모 목록(GET /notes)은 판정기가 보기에 여러 사람의 자료를 한꺼번에 여는 경로라 표에 넣지 않습니다(S08_OTHER_ZONE_ALLOWED).
 // instructor_notice_zone(자원 ID notices.instructor): 강사임을 증명하는 값이 계약에 없어 공지 수정은 누구의 요청이든 거부합니다.
 // :id 칸은 자료 ID만 고릅니다. 같은 깊이에 export 같은 기능 경로를 두지 않으므로 그 칸의 값은 언제나 자료 ID로만 읽힙니다.
 // 쿼리로 기능을 고르지 않습니다. 이 경로들은 쿼리를 쓰지 않으므로 쿼리가 붙은 요청(queryLength가 0이 아님)은 표에 맞지 않습니다.
 // 경로 모양은 시작 틀 연습 요청(GET /notes/:id)과 aleph.config.json(GET /api/notes/:id) 두 가지를 받습니다. 엔진이 어느 쪽을 보내는지는 확인하지 못했습니다.
 // 이 파일은 격리 환경에서 혼자 불릴 수 있어 src/resources.mjs를 불러오지 않고 구역 이름을 여기 따로 적습니다.
 const ZONE_ROUTES = Object.freeze([
-  ['own_notes_zone', 'GET', '/notes'],
   ['own_notes_zone', 'GET', '/notes/:id'],
   ['own_notes_zone', 'PUT', '/notes/:id'],
   ['instructor_notice_zone', 'PUT', '/notices/:id'],

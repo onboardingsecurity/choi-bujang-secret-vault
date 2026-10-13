@@ -19,10 +19,9 @@ const NOTICE = '22222222-2222-4222-8222-222222222222';
 const ask = (who, method, route, path, patch = {}) => ({ ...normal, ...who, requestId: randomUUID(), method, route, path, ...patch });
 const OWN = ['device_registered', 'own_notes_zone'];
 
-test('A의 자기 메모 목록 읽기·한 건 읽기·수정은 허용된다(두 경로 모양 모두)', async () => {
+test('A의 자기 메모 한 건 읽기·수정은 허용된다(두 경로 모양 모두)', async () => {
   for (const prefix of ['', '/api']) {
     const cases = [
-      ['GET', `GET ${prefix}/notes`, `${prefix}/notes`],
       ['GET', `GET ${prefix}/notes/:id`, `${prefix}/notes/${NOTE_OF_A}`],
       ['PUT', `PUT ${prefix}/notes/:id`, `${prefix}/notes/${NOTE_OF_A}`],
     ];
@@ -33,6 +32,28 @@ test('A의 자기 메모 목록 읽기·한 건 읽기·수정은 허용된다(�
       assert.equal(result.reasonCode, 'approved', route);
       assert.deepEqual(result.ruleIds, OWN, route);
       assert.equal(result.requestId, request.requestId);
+    }
+  }
+});
+
+test('메모 전체 목록은 여러 사람의 자료를 한꺼번에 여는 경로라 판정기가 거부한다(S08)', async () => {
+  const reverified = { stepUp: { verified: true, authAgeSeconds: 10 }, role: 'instructor' };
+  for (const prefix of ['', '/api']) {
+    for (const extra of [{}, reverified]) {
+      const result = await decide(ask(A, 'GET', `GET ${prefix}/notes`, `${prefix}/notes`, extra));
+      assert.equal(result.decision, 'deny', prefix);
+      assert.equal(result.reasonCode, 'starter_not_ready');
+      assert.deepEqual(result.ruleIds, ['starter.deny']);
+    }
+  }
+});
+
+test('공지 쓰기는 POST·PUT·PATCH·DELETE 모두 누구에게나 거부된다(S08)', async () => {
+  for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+    for (const prefix of ['', '/api']) {
+      for (const [route, path] of [[`${method} ${prefix}/notices`, `${prefix}/notices`], [`${method} ${prefix}/notices/:id`, `${prefix}/notices/${NOTICE}`]]) {
+        for (const who of [A, B]) assert.equal((await decide(ask(who, method, route, path))).decision, 'deny', route);
+      }
     }
   }
 });
