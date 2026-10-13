@@ -72,6 +72,7 @@
         <button id="device-verify" type="button">승인된 이 기기로 확인</button>
         <button id="device-refresh" class="sub" type="button">승인 상태 다시 보기</button>
       </div>
+      <p class="msg" id="device-msg" role="status"></p>
       <p class="hint">승인 요청은 서버에 '대기'로만 등록됩니다. 관리자가 서버(Supabase)에서 승인한 뒤, 이 기기의 패스키(지문·얼굴·화면 잠금)로 서명해야 자료실이 열립니다. 이 화면의 버튼만으로는 승인되지 않습니다.</p>
     </section>
 
@@ -134,7 +135,12 @@
         lockVault('기기 확인이 필요합니다. 확인 시간이 지났거나 승인이 회수되었을 수 있습니다.');
         $('device-state').textContent = '서버가 이 기기 확인을 인정하지 않음';
       }
-      if (!response.ok) throw new Error(REASONS[body?.error] ?? `요청이 거부되었습니다 (HTTP ${response.status}).`);
+      if (!response.ok) {
+        const failure = new Error(REASONS[body?.error] ?? `요청이 거부되었습니다 (HTTP ${response.status}).`);
+        failure.status = response.status;
+        failure.code = typeof body?.error === 'string' ? body.error : '';
+        throw failure;
+      }
       return body;
     }
 
@@ -242,17 +248,27 @@
     const toB64u = buffer => btoa(String.fromCharCode(...new Uint8Array(buffer)))
       .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     const withIds = list => (list ?? []).map(item => ({ ...item, id: fromB64u(item.id) }));
-    const deviceError = error => (error.name === 'NotAllowedError' ? '패스키 확인이 취소되었거나 시간이 지났습니다.'
-      : error.name === 'InvalidStateError' ? '이 기기는 이미 승인 요청을 보냈습니다.' : error.message);
+    // 기기 승인 결과는 버튼 바로 아래(device-msg)에 보여 줍니다. 어느 단계에서 멈췄는지와 서버 응답 코드만 적고, 토큰·키는 적지 않습니다.
+    let stage = '';
+    const deviceSay = text => { $('device-msg').textContent = text; };
+    const deviceError = error => {
+      const reason = error.name === 'NotAllowedError' ? '패스키 확인이 취소되었거나 시간이 지났습니다.'
+        : error.name === 'InvalidStateError' ? '이 기기는 이미 승인 요청을 보냈습니다.' : error.message;
+      const code = error.status ? ` (HTTP ${error.status}${error.code ? ` ${error.code}` : ''})` : error.name ? ` (${error.name})` : '';
+      return `${stage ? `[${stage}] ` : ''}${reason}${code}`;
+    };
 
     // 기기 개인키는 기기의 패스키 인증기 안에서 만들어지고 나오지 않습니다. 서버에는 공개키가 담긴 응답만 보냅니다.
     async function requestApproval(label) {
+      stage = '1/3 서버에서 챌린지 받기';
       if (!window.PublicKeyCredential) throw new Error('이 브라우저는 패스키를 지원하지 않습니다.');
       const options = await api('/api/device/challenge', { method: 'POST', body: JSON.stringify({ purpose: 'register' }) });
+      stage = '2/3 기기 패스키 만들기';
       const credential = await navigator.credentials.create({ publicKey: {
         ...options, challenge: fromB64u(options.challenge), user: { ...options.user, id: fromB64u(options.user.id) },
         excludeCredentials: withIds(options.excludeCredentials) } });
       const { response } = credential;
+      stage = '3/3 서버에 승인 요청 저장';
       return api('/api/device/register', { method: 'POST', body: JSON.stringify({ label, credential: {
         id: credential.id, rawId: toB64u(credential.rawId), type: credential.type,
         response: { clientDataJSON: toB64u(response.clientDataJSON), attestationObject: toB64u(response.attestationObject),
@@ -262,11 +278,14 @@
     }
 
     async function proveDevice() {
+      stage = '1/3 서버에서 챌린지 받기';
       if (!window.PublicKeyCredential) throw new Error('이 브라우저는 패스키를 지원하지 않습니다.');
       const options = await api('/api/device/challenge', { method: 'POST', body: JSON.stringify({ purpose: 'verify' }) });
+      stage = '2/3 기기 패스키로 서명하기';
       const credential = await navigator.credentials.get({ publicKey: {
         ...options, challenge: fromB64u(options.challenge), allowCredentials: withIds(options.allowCredentials) } });
       const { response } = credential;
+      stage = '3/3 서버가 서명 확인';
       return api('/api/device/verify', { method: 'POST', body: JSON.stringify({ credential: {
         id: credential.id, rawId: toB64u(credential.rawId), type: credential.type,
         response: { clientDataJSON: toB64u(response.clientDataJSON), authenticatorData: toB64u(response.authenticatorData),
@@ -300,22 +319,22 @@
     });
     $('device-form').addEventListener('submit', async event => {
       event.preventDefault();
-      say('');
+      say(''); stage = ''; deviceSay('승인 요청 중… 패스키 확인 창이 뜨면 지문이나 화면 잠금으로 확인하세요.');
       try {
         const { device } = await requestApproval($('device-label').value);
         $('device-form').reset();
-        say(`승인 요청을 보냈습니다: ${device.label} (기기 번호 ${device.code}, ${STATUS_TEXT[device.status] ?? device.status}). 관리자가 서버에서 승인해야 열립니다.`);
-      } catch (error) { say(deviceError(error)); }
+        deviceSay(`승인 요청을 보냈습니다: ${device.label} (기기 번호 ${device.code}, ${STATUS_TEXT[device.status] ?? device.status}). 관리자가 서버에서 승인해야 열립니다.`);
+      } catch (error) { deviceSay(deviceError(error)); }
       await checkDevice();
     });
     $('device-verify').addEventListener('click', async () => {
-      say('');
-      try { await proveDevice(); say('서버가 이 기기의 서명을 확인했습니다.'); }
-      catch (error) { say(deviceError(error)); }
+      say(''); stage = ''; deviceSay('기기 확인 중… 패스키 확인 창이 뜨면 지문이나 화면 잠금으로 확인하세요.');
+      try { await proveDevice(); deviceSay('서버가 이 기기의 서명을 확인했습니다.'); }
+      catch (error) { deviceSay(deviceError(error)); }
       // 자료실을 열지는 버튼 결과가 아니라 서버가 다시 알려 주는 상태로 정합니다.
       await checkDevice();
     });
-    $('device-refresh').addEventListener('click', () => { say(''); checkDevice(); });
+    $('device-refresh').addEventListener('click', () => { say(''); deviceSay(''); checkDevice(); });
     $('note-form').addEventListener('submit', async event => {
       event.preventDefault();
       const fields = JSON.stringify({ title: $('note-title').value, body: $('note-body').value });
