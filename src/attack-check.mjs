@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -34,28 +34,18 @@ export async function runAttackChecks(config) {
     return [{ attackId: 'anonymous_note_read', expected: '비로그인 화면에서 가상 메모를 확인',
       observed: staticRead.visible ? '비로그인 요청에서 공개 가상 메모 확인 표시가 보임' : `비로그인 요청에서 확인 표시가 보이지 않음 (HTTP ${staticRead.status})` }];
   }
-  if (config.step >= 3 && config.step <= 10) {
-    // 3~10단계: 토큰 없는 요청과 가짜 토큰 요청만 실제로 보냅니다. 비밀번호는 이 파일에 넣지 않으므로
+  if (config.step >= 3 && config.step <= 11) {
+    // 3~11단계: 토큰 없는 요청과 가짜 토큰 요청만 실제로 보냅니다. 비밀번호는 이 파일에 넣지 않으므로
     // 로그인 상태의 추가·수정·삭제와 A/B 교차 접근은 여기서 보내지 않고 '미실행'으로 남깁니다.
     const probeId = '11111111-1111-4111-8111-111111111111';
     const noteBody = JSON.stringify({ title: 'x', body: 'y' });
-    const probes = [
-      ['anonymous_list', 'GET', '/api/notes'],
-      ['anonymous_create', 'POST', '/api/notes', noteBody],
-      ['anonymous_read_one', 'GET', `/api/notes/${probeId}`],
-      ['anonymous_update', 'PUT', `/api/notes/${probeId}`, noteBody],
-      ['anonymous_delete', 'DELETE', `/api/notes/${probeId}`],
-      ['fake_token_list', 'GET', '/api/notes', undefined, { authorization: 'Bearer aaa.bbb.ccc' }],
-    ];
-    const results = [{ attackId: 'static_data_json', expected: '/data.json에서 메모가 보이지 않아야 함',
-      observed: staticRead.visible ? '정적 /data.json에서 메모가 아직 보임' : `정적 /data.json에서 메모가 보이지 않음 (HTTP ${staticRead.status})` }];
-    const resourceIds = {};
-    for (const [attackId, method, path, body, extra] of probes) {
+    const fakeToken = { authorization: 'Bearer aaa.bbb.ccc' };
+    // 요청 하나를 보내고 상태·자원 ID·메모 노출 여부만 돌려줍니다. 응답 본문은 저장하지 않습니다.
+    const send = async (method, path, body, extra = {}, label = '') => {
       const response = await fetch(new URL(path, app), {
         method, redirect: 'error', signal: AbortSignal.timeout(10000),
         headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...extra }, body,
       });
-      resourceIds[attackId] = response.headers.get('x-resource-id');
       let leaked = false;
       try {
         const text = await response.text();
@@ -63,9 +53,21 @@ export async function runAttackChecks(config) {
       } catch {
         // An unreadable body is not a leak.
       }
-      results.push({ attackId, expected: '로그인 없이는 거부(401)되고 메모가 보이지 않아야 함',
-        observed: `${method} ${path.replace(probeId, ':id')} → HTTP ${response.status}${leaked ? ' (메모 내용이 보임)' : ', 메모 내용 없음'}` });
-    }
+      return { resourceId: response.headers.get('x-resource-id'), leaked,
+        line: `${label}${method} ${path.replace(probeId, ':id')} → HTTP ${response.status}` };
+    };
+    const observe = (sent) => `${sent.map((item) => item.line).join(', ')}${sent.some((item) => item.leaked) ? ' (메모 내용이 보임)' : ', 메모 내용 없음'}`;
+    const anonymous = '로그인 없이는 거부(401)되고 메모가 보이지 않아야 함';
+    const results = [{ attackId: 'static_data_json', expected: '/data.json에서 메모가 보이지 않아야 함',
+      observed: staticRead.visible ? '정적 /data.json에서 메모가 아직 보임' : `정적 /data.json에서 메모가 보이지 않음 (HTTP ${staticRead.status})` }];
+    const list = await send('GET', '/api/notes');
+    results.push({ attackId: 'anonymous_list', expected: anonymous, observed: observe([list]) });
+    // 11단계: 제출 묶음의 점검은 20개까지라, 로그인 없는 메모 추가·수정·삭제 세 요청을 한 항목으로 묶어 모두 보냅니다.
+    const writes = [await send('POST', '/api/notes', noteBody), await send('PUT', `/api/notes/${probeId}`, noteBody),
+      await send('DELETE', `/api/notes/${probeId}`)];
+    results.push({ attackId: 'anonymous_write', expected: '로그인 없는 메모 추가·수정·삭제는 모두 거부(401)되고 메모가 보이지 않아야 함', observed: observe(writes) });
+    results.push({ attackId: 'anonymous_read_one', expected: anonymous, observed: observe([await send('GET', `/api/notes/${probeId}`)]) });
+    results.push({ attackId: 'fake_token_list', expected: anonymous, observed: observe([await send('GET', '/api/notes', undefined, fakeToken)]) });
     if (config.step >= 4) {
       // 4·5단계: anon 키로 Supabase Data API를 직접 읽어 봅니다(5단계는 originalApiUrl). 키는 배포된 /api/config가 내려 주는 공개용 값만 씁니다.
       const direct = { attackId: 'anon_data_api_read', expected: 'anon 키로 notes 표를 직접 읽을 수 없어야 함(401/403)' };
@@ -109,7 +111,7 @@ export async function runAttackChecks(config) {
         });
         results.push(
           { attackId: 'resource_id_header', expected: '내 메모 API의 응답에는 서버가 정한 자원 ID(notes.own)가 붙어야 함',
-            observed: `GET /api/notes → X-Resource-Id ${resourceIds.anonymous_list ?? '없음'}` },
+            observed: `GET /api/notes → X-Resource-Id ${list.resourceId ?? '없음'}` },
           { attackId: 'instructor_notice_edit', expected: '비로그인의 강사 공지 수정은 거부되어야 함',
             observed: `PUT /api/notices/:id → HTTP ${notice.status} (공지 주소가 없음. 로그인한 일반 학생의 요청은 미실행)` },
           { attackId: 'decider_zone_rules', expected: '일반 학생의 공지 수정과 알 수 없는 경로는 판정기가 거부해야 함',
@@ -123,23 +125,45 @@ export async function runAttackChecks(config) {
       if (config.step >= 10) {
         // 10단계: 복원 경로에 토큰 없는 요청과 가짜 토큰 요청만 실제로 보냅니다. 복원은 로그인한 사본 소유자만 할 수 있어서
         // 로그인한 다른 계정의 요청은 이 스크립트가 보내지 않고 '미실행'으로 남깁니다. 사본을 바꾸는 요청은 보내지 않습니다.
+        // 11단계부터 토큰 없는 요청과 가짜 토큰 요청을 한 항목(restore_without_login)으로 묶어 둘 다 보냅니다.
         const restorePath = typeof config.restoreRoute === 'string' && config.restoreRoute.startsWith('POST /') ? config.restoreRoute.slice(5) : null;
         const restoreBody = JSON.stringify({ id: probeId, title: 'x', body: 'y' });
-        for (const [attackId, extra] of [['anonymous_restore', {}], ['fake_token_restore', { authorization: 'Bearer aaa.bbb.ccc' }]]) {
-          const expected = '로그인 없이는 복원 경로가 거부(401)되고 메모가 보이지 않아야 함';
-          if (!restorePath) { results.push({ attackId, expected, observed: '미실행 (aleph.config.json에 restoreRoute가 없음)' }); continue; }
-          const response = await fetch(new URL(restorePath, app), {
-            method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000),
-            headers: { 'content-type': 'application/json', ...extra }, body: restoreBody,
-          });
-          let leaked = false;
-          try { leaked = response.ok || /"(title|body)"\s*:/u.test(await response.text()); } catch {
-            // An unreadable body is not a leak.
-          }
-          results.push({ attackId, expected, observed: `POST ${restorePath} → HTTP ${response.status}${leaked ? ' (메모 내용이 보임)' : ', 메모 내용 없음'}` });
-        }
+        const expected = '로그인 없이·가짜 토큰으로는 복원 경로가 거부(401)되고 메모가 보이지 않아야 함';
+        results.push({ attackId: 'restore_without_login', expected, observed: restorePath
+          ? observe([await send('POST', restorePath, restoreBody), await send('POST', restorePath, restoreBody, fakeToken, '가짜 토큰 ')])
+          : '미실행 (aleph.config.json에 restoreRoute가 없음)' });
         results.push({ attackId: 'restore_other_user', expected: '사본 소유자가 아닌 로그인 계정의 복원 요청은 404로 거부되고 다른 메모는 그대로여야 함',
           observed: '미실행 (이 스크립트는 로그인 요청을 보내지 않음. 학생이 A 시크릿 창에서 직접 확인)' });
+      }
+      if (config.step >= 11) {
+        // 11단계: 설치용 manifest와 첫 화면 원본을 읽고, 기기 승인 API에는 토큰 없는 요청과 승인된 척하는 가짜 토큰 요청만 보냅니다.
+        // 로그인한 계정의 승인 전·후 요청은 이 스크립트가 보내지 않으므로 '미실행'으로 남깁니다.
+        let manifestLine;
+        try {
+          const response = await fetch(new URL('/manifest.webmanifest', app), { redirect: 'error', signal: AbortSignal.timeout(10000) });
+          const manifest = response.ok ? await response.json().catch(() => null) : null;
+          const icons = Array.isArray(manifest?.icons) ? manifest.icons.map((icon) => icon?.sizes).filter((size) => typeof size === 'string') : [];
+          manifestLine = `GET /manifest.webmanifest → HTTP ${response.status}${manifest ? ` (${manifest.display ?? 'display 없음'}, 아이콘 ${icons.join('·') || '없음'})` : ''}`;
+        } catch {
+          manifestLine = 'GET /manifest.webmanifest → 요청 실패';
+        }
+        let pageLine;
+        try {
+          const response = await fetch(new URL('/', app), { redirect: 'error', signal: AbortSignal.timeout(10000) });
+          const code = (await response.text()).replace(/<!--[\s\S]*?-->/gu, '').replace(/^\s*\/\/.*$/gmu, '');
+          const storage = /localStorage|sessionStorage|indexedDB|document\.cookie/u.test(code);
+          pageLine = `GET / → HTTP ${response.status}, 브라우저 저장소 사용 ${storage ? '있음' : '없음'}, 로그인 세션 ${/persistSession:\s*false/u.test(code) ? '메모리 보관' : '저장소 보관 가능'}`;
+        } catch {
+          pageLine = 'GET / → 요청 실패';
+        }
+        const forged = JSON.stringify({ label: 'x', credential: {}, status: 'approved' });
+        results.push(
+          { attackId: 'app_install_not_trusted', expected: '설치용 manifest가 있어도 설치 표시만으로 기기가 승인되지 않고, 로그인 토큰·기기 키를 브라우저 저장소에 두지 않아야 함',
+            observed: `${manifestLine}; ${pageLine}` },
+          { attackId: 'forged_device_approval', expected: '로그인 없는 기기 상태 조회와 승인된 척하는 가짜 토큰 등록 요청은 거부(401)되어야 함',
+            observed: observe([await send('GET', '/api/device/status'), await send('POST', '/api/device/register', forged, fakeToken, '가짜 토큰 ')]) },
+          { attackId: 'unapproved_device_notes', expected: '로그인했어도 서버가 승인·확인하지 않은 기기의 메모 요청은 403으로 거부되고 메모가 보이지 않아야 함',
+            observed: '미실행 (이 스크립트는 로그인 요청을 보내지 않음. 학생이 승인 전 화면에서 확인)' });
       }
       return results;
     }
