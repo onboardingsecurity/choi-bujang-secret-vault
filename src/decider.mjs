@@ -62,12 +62,13 @@ export function readAccessInfo(request) {
 
 // 7단계 step_up_required: 평소와 다른 시각 + 처음 보는 네트워크 + 갑작스러운 대량 조회가 모두 있을 때만 추가 확인(step_up)을 요청합니다.
 // 지역(region)은 사유 기록용 참고일 뿐 근거가 아닙니다. 지역 하나로는 추가 확인도 거부도 하지 않고, 이 규칙은 영구 차단하지 않습니다.
-// 기준 값(심야 0~5시, 10분 안 10건 이상, 재확인 900초 이내)은 심판 가상 사건 연습에 맞춘 이 파일의 값이며 계약이 정한 값이 아닙니다.
+// 기준 값(심야 22시~다음 날 5시, 15분(900초) 안 5건 이상, 재확인 900초 이내)은 심판 가상 사건 연습에 맞춘 이 파일의 값이며 계약이 정한 값이 아닙니다.
+// 900초는 계약이 정한 유일한 시간 한계(재확인 나이 0~900초)에 맞춘 값입니다.
 // 시각·네트워크가 알 수 없음(null)이면 근거가 없는 것이므로 규칙이 맞지 않고, 정상값으로 채우지도 않습니다.
-const NIGHT_FROM_HOUR = 0;
+const NIGHT_FROM_HOUR = 22;
 const NIGHT_TO_HOUR = 5;
-const BURST_WINDOW_SECONDS = 600;
-const BURST_MIN_COUNT = 10;
+const BURST_WINDOW_SECONDS = 900;
+const BURST_MIN_COUNT = 5;
 const STEP_UP_MAX_AGE_SECONDS = 900;
 const STEP_UP_REQUIRED_EVIDENCE = ['unusual_hour', 'unusual_network', 'read_burst'];
 const REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
@@ -75,7 +76,8 @@ const REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 export function stepUpEvidence(request) {
   const { signals, events } = readAccessInfo(request);
   const evidence = [];
-  if (signals.hour !== null && signals.hour >= NIGHT_FROM_HOUR && signals.hour <= NIGHT_TO_HOUR) evidence.push('unusual_hour');
+  // 심야는 날이 바뀌는 구간(22시 이상 또는 5시 이하)입니다.
+  if (signals.hour !== null && (signals.hour >= NIGHT_FROM_HOUR || signals.hour <= NIGHT_TO_HOUR)) evidence.push('unusual_hour');
   if (signals.network === 'unusual') evidence.push('unusual_network');
   const recent = (events ?? []).reduce((sum, item) => (item.ageSeconds <= BURST_WINDOW_SECONDS ? sum + item.count : sum), 0);
   if (recent >= BURST_MIN_COUNT) evidence.push('read_burst');

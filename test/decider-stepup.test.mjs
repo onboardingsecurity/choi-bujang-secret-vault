@@ -50,8 +50,8 @@ test('시각·네트워크·대량 조회 중 하나라도 빠지면 추가 확�
   const cases = [
     ['시각 정상', odd({ signals: { hour: 14 } })],
     ['네트워크 정상', odd({ signals: { network: 'usual' } })],
-    ['조회량 적음', odd({}, burst(9))],
-    ['조회가 오래전', odd({}, burst(50, 601))],
+    ['조회량 적음', odd({}, burst(4))],
+    ['조회가 오래전', odd({}, burst(50, 901))],
     ['사건 없음', odd({}, [])],
     ['시각만 이상', odd({ signals: { network: 'usual' } }, [])],
     ['네트워크만 이상', odd({ signals: { hour: 14 } }, [])],
@@ -60,12 +60,13 @@ test('시각·네트워크·대량 조회 중 하나라도 빠지면 추가 확�
   for (const [name, request] of cases) assert.equal((await decide(request)).decision, 'allow', name);
 });
 
-test('기준 경계: 0~5시, 10건, 600초', async () => {
-  for (const hour of [0, 5]) assert.equal((await decide(odd({ signals: { hour } }))).decision, 'step_up', String(hour));
-  for (const hour of [6, 23]) assert.equal((await decide(odd({ signals: { hour } }))).decision, 'allow', String(hour));
-  assert.equal((await decide(odd({}, burst(10, 600)))).decision, 'step_up');
-  assert.equal((await decide(odd({}, [...burst(4), ...burst(6)]))).decision, 'step_up');
-  assert.equal((await decide(odd({}, burst(10, 601)))).decision, 'allow');
+test('기준 경계: 22~5시, 5건, 900초', async () => {
+  for (const hour of [22, 23, 0, 3, 5]) assert.equal((await decide(odd({ signals: { hour } }))).decision, 'step_up', String(hour));
+  for (const hour of [6, 12, 14, 21]) assert.equal((await decide(odd({ signals: { hour } }))).decision, 'allow', String(hour));
+  assert.equal((await decide(odd({}, burst(5, 900)))).decision, 'step_up');
+  assert.equal((await decide(odd({}, burst(4, 900)))).decision, 'allow');
+  assert.equal((await decide(odd({}, [...burst(2), ...burst(3)]))).decision, 'step_up');
+  assert.equal((await decide(odd({}, burst(50, 901)))).decision, 'allow');
 });
 
 test('알 수 없거나 출처 불명인 접속 정보는 이상 근거로 승격되지 않고 정상값으로도 채워지지 않는다', async () => {
