@@ -25,14 +25,14 @@ test('정상 사건은 허용되고 복합 이상 사건은 추가 확인으로 
   const ok = await decide(normal);
   assert.equal(ok.decision, 'allow');
   assert.equal(ok.reasonCode, 'approved');
-  assert.deepEqual(ok.ruleIds, ['device_registered']);
+  assert.deepEqual(ok.ruleIds, ['device_registered', 'own_notes_zone']);
   const step = await decide(suspicious);
   assert.equal(Object.keys(step).sort().join(), FIVE);
   assert.equal(step.decision, 'step_up');
   assert.equal(step.reasonCode, 'step_up_required');
   assert.deepEqual(step.ruleIds, ['step_up_required']);
   assert.equal(step.requestId, suspicious.requestId);
-  assert.deepEqual(RULE_IDS, ['starter.deny', 'device_registered', 'step_up_required']);
+  assert.deepEqual(RULE_IDS, ['starter.deny', 'device_registered', 'step_up_required', 'own_notes_zone', 'instructor_notice_zone']);
 });
 
 test('사유(근거)가 남고 지역은 참고일 뿐이다', () => {
@@ -89,7 +89,7 @@ test('다시 확인된 새 요청은 다시 판정해 허용하고, 모양이 �
   const again = await decide({ ...suspicious, stepUp: { verified: true, authAgeSeconds: 60 } });
   assert.equal(again.decision, 'allow');
   assert.equal(again.reasonCode, 'approved');
-  assert.deepEqual(again.ruleIds, ['device_registered', 'step_up_required']);
+  assert.deepEqual(again.ruleIds, ['device_registered', 'own_notes_zone', 'step_up_required']);
   for (const authAgeSeconds of [0, 900]) {
     assert.equal((await decide({ ...suspicious, stepUp: { verified: true, authAgeSeconds } })).decision, 'allow', String(authAgeSeconds));
   }

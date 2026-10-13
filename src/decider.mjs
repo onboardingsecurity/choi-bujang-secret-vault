@@ -1,7 +1,9 @@
 // ALEPH SDP 엔진이 확인한 요청만 받는 학생 판정기 시작점입니다.
 // 6단계부터 규칙을 하나씩 추가합니다. 어느 규칙에도 맞지 않는 요청은 시작 틀 응답(starter.deny)으로 거부합니다.
 // 요청 본문의 userId, role, 기기 키, 토큰을 별도로 믿거나 저장하지 마세요.
-export const RULE_IDS = Object.freeze(['starter.deny', 'device_registered', 'step_up_required']);
+export const RULE_IDS = Object.freeze([
+  'starter.deny', 'device_registered', 'step_up_required', 'own_notes_zone', 'instructor_notice_zone',
+]);
 
 const answer = (request, decision, reasonCode, ...ruleIds) => ({
   schema: 'aleph.decision.v1',
@@ -93,24 +95,63 @@ function reverified(stepUp) {
     && stepUp.authAgeSeconds <= STEP_UP_MAX_AGE_SECONDS;
 }
 
+// 8단계 구역 규칙: 엔진이 확인한 사용자(subjectId)·기기(deviceId)·메서드·정확한 경로(route와 path)가 아래 표와 맞을 때만 구역이 정해집니다.
+// 표에 없는 경로·메서드는 구역이 없고 맨 아래 starter.deny가 거부합니다(알 수 없는 경로는 거부).
+// own_notes_zone(자원 ID notes.own): 내 메모 목록 읽기, 한 건 읽기·수정. 메모 주인은 계약에 없어 여기서 가리지 못하므로,
+//   B가 A의 메모 ID를 고른 요청은 최종 자료 API가 저장된 owner_id와 대조해 막습니다.
+// instructor_notice_zone(자원 ID notices.instructor): 강사임을 증명하는 값이 계약에 없어 공지 수정은 누구의 요청이든 거부합니다.
+// :id 칸은 자료 ID만 고릅니다. 같은 깊이에 export 같은 기능 경로를 두지 않으므로 그 칸의 값은 언제나 자료 ID로만 읽힙니다.
+// 쿼리로 기능을 고르지 않습니다. 이 경로들은 쿼리를 쓰지 않으므로 쿼리가 붙은 요청(queryLength가 0이 아님)은 표에 맞지 않습니다.
+// 경로 모양은 시작 틀 연습 요청(GET /notes/:id)과 aleph.config.json(GET /api/notes/:id) 두 가지를 받습니다. 엔진이 어느 쪽을 보내는지는 확인하지 못했습니다.
+// 이 파일은 격리 환경에서 혼자 불릴 수 있어 src/resources.mjs를 불러오지 않고 구역 이름을 여기 따로 적습니다.
+const ZONE_ROUTES = Object.freeze([
+  ['own_notes_zone', 'GET', '/notes'],
+  ['own_notes_zone', 'GET', '/notes/:id'],
+  ['own_notes_zone', 'PUT', '/notes/:id'],
+  ['instructor_notice_zone', 'PUT', '/notices/:id'],
+]);
+const ROUTE_PREFIXES = ['', '/api'];
+const RESOURCE_ID = '[A-Za-z0-9][A-Za-z0-9_-]{0,63}';
+const SUBJECT_ID = /^\S{1,256}$/u;
+const DEVICE_ID = /^[0-9a-f]{16}$/u;
+
+export function zoneOf(request) {
+  if (typeof request?.subjectId !== 'string' || !SUBJECT_ID.test(request.subjectId)) return null;
+  if (typeof request.deviceId !== 'string' || !DEVICE_ID.test(request.deviceId)) return null;
+  if (request.queryLength !== 0 || typeof request.path !== 'string') return null;
+  for (const [zone, method, template] of ZONE_ROUTES) {
+    if (request.method !== method) continue;
+    for (const prefix of ROUTE_PREFIXES) {
+      const exactPath = new RegExp(`^${prefix}${template.replace(':id', RESOURCE_ID)}$`, 'u');
+      if (request.route === `${method} ${prefix}${template}` && exactPath.test(request.path)) return zone;
+    }
+  }
+  return null;
+}
+
 export async function decide(request) {
-  // 6단계 device_registered: 엔진이 넣어 준 deviceRegistered가 true일 때만 내 자료실 읽기(GET)를 허용합니다.
-  // false이거나 값이 없거나 true가 아닌 값(문자열 'true' 등)이면 미등록 기기로 보고 거부합니다.
+  // 6단계 device_registered: 엔진이 넣어 준 deviceRegistered가 true가 아니면 어느 구역이든 먼저 거부합니다.
+  // false이거나 값이 없거나 true가 아닌 값(문자열 'true' 등)이면 미등록 기기로 봅니다.
   if (request?.deviceRegistered !== true) {
     return answer(request, 'deny', 'device_not_registered', 'device_registered');
   }
-  if (request.method === 'GET') {
+  const zone = zoneOf(request);
+  if (zone === 'instructor_notice_zone') return answer(request, 'deny', 'starter_not_ready', 'instructor_notice_zone');
+  if (zone === 'own_notes_zone') {
     // 7단계 step_up_required: 복합 이상 접속은 확인 전에는 추가 확인을 요청하고, 엔진이 다시 확인했다고 알려 준 새 요청은 다시 판정해 허용합니다.
+    // 8단계에서 내 메모 수정(PUT)이 열렸으므로 이 확인은 읽기와 수정 모두에 걸립니다.
     const evidence = stepUpEvidence(request);
     if (STEP_UP_REQUIRED_EVIDENCE.every(item => evidence.includes(item))) {
-      if (reverified(request.stepUp)) return answer(request, 'allow', 'approved', 'device_registered', 'step_up_required');
+      if (reverified(request.stepUp)) {
+        return answer(request, 'allow', 'approved', 'device_registered', 'own_notes_zone', 'step_up_required');
+      }
       // 사유 기록: 요청 ID와 근거 이름만 오류 출력에 한 줄 남깁니다. 계정·기기·쿼리 지문·접속 값·토큰은 쓰지 않습니다.
       // 심판은 이 파일 하나를 process가 없는 격리 환경에서 부를 수 있으므로, 쓸 수 있을 때만 쓰고 실패해도 판정은 그대로 돌려줍니다.
       const id = typeof request.requestId === 'string' && REQUEST_ID.test(request.requestId) ? request.requestId : 'unknown';
       try { globalThis.process?.stderr?.write?.(`step_up_required request=${id} evidence=${evidence.join(',')}\n`); } catch {}
       return answer(request, 'step_up', 'step_up_required', 'step_up_required');
     }
-    return answer(request, 'allow', 'approved', 'device_registered');
+    return answer(request, 'allow', 'approved', 'device_registered', 'own_notes_zone');
   }
   return answer(request, 'deny', 'starter_not_ready', RULE_IDS[0]);
 }
