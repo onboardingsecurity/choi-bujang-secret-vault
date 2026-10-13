@@ -1,0 +1,21 @@
+{
+  "schema": "aleph.policy.snapshot.v1",
+  "version": "9단계-통과-시점",
+  "policy": {
+    "rules": [
+      "starter.deny",
+      "device_registered",
+      "step_up_required",
+      "own_notes_zone",
+      "instructor_notice_zone"
+    ],
+    "allowedRoutes": [
+      "GET /api/notes",
+      "POST /api/notes",
+      "GET /api/notes/:id",
+      "PUT /api/notes/:id",
+      "DELETE /api/notes/:id"
+    ]
+  },
+  "sha256": "23c296e3423a4512b047a6f8b825c740074172599019383390e93019ee18f9f1"
+}
