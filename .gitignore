@@ -8,3 +8,4 @@ db/seed-notes.sql
 xdr/*/result.json
 xdr/*/block-candidates.json
 xdr/alerts.log
+backup/private/
