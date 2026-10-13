@@ -8,13 +8,13 @@
 2. 방어전 1단계 카드의 **Deploy** 버튼을 누릅니다. Vercel에 GitHub로 로그인하고, 새 저장소가 **본인 계정의 Public 저장소**인지 확인한 뒤 Deploy를 누릅니다.
 3. 배포가 끝나면 화면에 나온 `https://…vercel.app` 주소를 방어전 1단계 카드에 붙여넣고 제출합니다. 저장소 주소나 설정 파일은 적지 않습니다.
 
-배포가 끝나면 `/`에서 점령된 가상 자료실을 볼 수 있습니다. `/data.json`에는 같은 가상 메모가 공개됩니다. 이 공개 상태를 확인하는 것이 1단계의 출발점입니다. 1단계 접수와 심판 판정은 포털에서 확인합니다.
+(1단계 당시 기록. 2단계부터 `/data.json`은 없고 로그인해야 메모가 보입니다.) 배포가 끝나면 `/`에서 점령된 가상 자료실을 볼 수 있습니다. `/data.json`에는 같은 가상 메모가 공개됩니다. 이 공개 상태를 확인하는 것이 1단계의 출발점입니다. 1단계 접수와 심판 판정은 포털에서 확인합니다.
 
 ## 시작 틀의 자동 처리
 
 `vercel.json`은 정적 결과물 `public`을 배포합니다. 빌드 명령 `npm run build`는 Vercel이 제공하는 GitHub 저장소 소유자·이름, 커밋 SHA, 배포 URL을 검증하고 `public/aleph.json`을 생성합니다. 이 값이 없으면 빌드가 실패하므로, 성공한 것처럼 빈 주소를 내보내지 않습니다. `aleph.json`의 내용만으로 저장소 소유권이나 방어 성공을 인정하지 않습니다. 심판이 공개 저장소의 실제 커밋과 배포된 자료를 따로 대조해야 합니다.
 
-`aleph.config.json`의 `repoUrl`과 `publicAppUrl`은 이전 제출 묶음 방식의 자리표시자입니다. 1단계에서는 학생이 편집하지 않습니다. 2단계 이후 코딩 도구가 필요한 설정과 보호 기능을 단계별로 작성합니다. `npm run bundle`과 `bundle-notes.json`도 1단계의 세 걸음에는 포함되지 않습니다.
+(1단계 당시 기록. 지금 `aleph.config.json`에는 실제 저장소·배포 주소가 들어 있고 `step`은 6입니다.) `aleph.config.json`의 `repoUrl`과 `publicAppUrl`은 이전 제출 묶음 방식의 자리표시자입니다. 1단계에서는 학생이 편집하지 않습니다. 2단계 이후 코딩 도구가 필요한 설정과 보호 기능을 단계별로 작성합니다. `npm run bundle`과 `bundle-notes.json`도 1단계의 세 걸음에는 포함되지 않습니다.
 
 로컬에서 가상 화면만 확인할 때는 `npm run build -- --local`을 사용합니다. 로컬 실행은 Vercel 배포나 심판 접수를 증명하지 않습니다. 저장소의 `src/attack-check.mjs`는 실제 배포가 된 뒤 `/data.json`을 비로그인으로 요청해 공개 가상 메모의 확인 표시를 읽습니다.
 
@@ -24,9 +24,45 @@
 
 `src/decider.mjs`와 `src/detect.mjs`의 로컬 시험은 반 엔진이나 운영 심판의 결과가 아닙니다. 1단계 이후 제출 묶음 계약 `aleph.defense.submission.v2`는 `scripts/bundle.mjs`에 남아 있으며, 코딩 도구가 해당 단계의 최신 배포 주소와 Git 원격을 맞춘 뒤 사용합니다.
 
+## 6단계 현재 상태: 등록한 기기만 자료실 읽기
+
+- `src/decider.mjs`에 규칙 `device_registered`를 더했습니다(`RULE_IDS`: `starter.deny`, `device_registered`). 반 엔진이 넣어 준 `request.deviceRegistered`가 `true`이고 동작(`method`)이 `GET`일 때만 `allow`(이유 코드 `approved`)입니다. `false`이거나 값이 없거나 `true`가 아닌 값이면 `deny`와 `device_not_registered`입니다. 등록 기기의 쓰기(`POST`·`PUT`·`DELETE`)는 이 규칙이 허용하지 않으며, 기존 `starter.deny`가 그대로 거부합니다.
+- 판단에는 계약(`docs/DECIDER_REQUEST.md`)에 있는 `deviceRegistered`와 `method`만 씁니다. 계약에 없는 `request.device` 같은 값이나 브라우저가 보낸 사용자 번호·기기 상태는 쓰지 않습니다. 인증서·CA·서명 키는 만들지 않았습니다.
+- 판정기는 Vercel의 메모 API에 연결되어 있지 않고 반 엔진이 부릅니다. 자료실 주소(`/api/notes` 등)와 브라우저 화면은 바꾸지 않았습니다.
+- 저장점에서 `aleph.config.json`의 `step`을 6으로 올렸습니다. 이에 맞춰 `scripts/deployment-identity.mjs`(빌드가 만드는 `public/aleph.json`)와 `src/attack-check.mjs`가 6단계를 받도록 고쳤습니다. 자기 점검에는 `unregistered_device` 항목을 미실행으로 추가했습니다(이 스크립트는 기기 등록 요청을 보내지 않습니다).
+- 2단계에서 `vercel.json`에 넣은 `X-Content-Type-Options: nosniff` 응답 헤더도 그대로입니다.
+- 현재 작동하는 것: 이메일 로그인, 본인 메모 읽기·추가·수정·삭제(`/api/notes`, `/api/notes/:id`), 원본 API 직접 접근 거부(5단계 기록), 판정기의 기기 등록 규칙(이 단계). 판정기는 가상 요청으로만 시험했습니다.
+
+### 6단계 확인 순서
+
+이번 단계에는 따로 설치할 접속 프로그램이 없습니다.
+
+1. 저장소 루트에서 `npm run decider:test`를 실행합니다.
+2. 정상 결과는 `통과 · 등록 기기의 정상 요청`과 `통과 · 미등록 기기의 가상 요청` 두 줄입니다. 첫 줄은 등록 기기 요청이 `allow`로 허용됐다는 뜻입니다. 둘째 줄은 미등록 기기 요청이 `deny`와 `device_not_registered`로 거부됐다는 뜻이며, 시험이 결정과 이유 코드를 함께 대조합니다.
+3. 미등록 기기 요청이 허용되거나 이유 코드가 다르면 둘째 줄이 `확인 필요 · 미등록 기기의 가상 요청`으로 바뀌고 명령이 실패(종료 코드 1)합니다.
+4. 이 명령은 가상 요청 연습이며 심판 판정이 아닙니다. 미등록 기기로 들어오는 공격은 심판이 시험합니다.
+
+### 6단계 확인 기록
+
+| 확인 | 실행한 쪽 | 결과 |
+| --- | --- | --- |
+| `npm run decider:test` | 코딩 도구가 실제 실행 | 등록 기기의 정상 요청 통과, 미등록 기기의 가상 요청 통과 (종료 코드 0) |
+| 같은 가상 요청에서 값만 바꿔 `decide`에 직접 넣기 | 같음 | 등록 기기 GET은 `allow`·`approved`. 미등록(`false`)·값 없음·문자열 `"true"`는 `deny`·`device_not_registered`. 등록 기기 POST는 `deny`·`starter_not_ready` |
+| 저장점 설정 대조: `step` 6으로 가짜 Vercel 환경값을 넣은 빌드 식별, 가짜 `fetch`로 자기 점검 모양 확인 | 코딩 도구가 실제 실행 | 빌드 식별이 `step` 6·허용 경로 5개·`originalApiUrl`을 만들고 `step` 7은 거부. 자기 점검 12항목(형식·중복 통과), 네트워크 요청은 보내지 않음 |
+| 심판의 미등록 기기 공격 | 미실행 | 심판이 맡습니다 |
+| `npm run bundle`과 재배포 | 미실행 | 이번에 실행하지 않았습니다 |
+
+### 6단계의 남은 약점 (해소되지 않음)
+
+- 요청 자체가 `null`·`undefined`여도 `decide`는 예외 없이 `deny`·`device_not_registered`를 돌려줍니다. 이때 응답에는 `requestId`가 없어 형식이 맞지 않으므로, 계약 문서대로 엔진이 접근을 허용하지 않아야 합니다. 엔진의 실제 처리는 이 저장소에서 확인하지 못했습니다.
+- 허용 이유 코드 `approved`는 계약 문서의 응답 예시에서 가져왔습니다. 운영 등록부(`allowedReasonCodes`)는 이 저장소에 없어 등록 여부를 확인하지 못했습니다.
+- 경로(`route`) 문자열은 검사하지 않습니다. 반 엔진이 허용 경로를 먼저 확인하며, 계약 예시(`GET /notes/:id`)와 `aleph.config.json`(`GET /api/notes/:id`) 중 어느 모양이 들어오는지 이 저장소에서 확정할 수 없습니다.
+- 등록 기기의 쓰기(`POST`·`PUT`·`DELETE`)는 거부됩니다. 심판의 정상 요청에 쓰기가 섞여 있는지 6단계 카드에서 확인하지 못했습니다.
+- `step`을 6으로 올린 뒤 재배포해서 빌드가 성공하는지는 확인하지 못했습니다(Vercel 빌드는 로컬에서 재현하지 못합니다).
+
 ## 보너스: 웹 주입 공격 탐지 현재 상태
 
-연습 경보(`xdr/fixtures/web-injection.json`, 가상 26건)만 다루는 부품입니다. 무차별 로그인 보너스와 같은 구조이고, 6~8단계 전이라 ZTNA 판정기(`src/decider.mjs`)에는 연결하지 않았습니다. 판정기 규칙(`RULE_IDS`)도 시작 틀 그대로입니다. 이 결과는 직접 돌린 연습이며 심판 판정이 아닙니다.
+연습 경보(`xdr/fixtures/web-injection.json`, 가상 26건)만 다루는 부품입니다. 무차별 로그인 보너스와 같은 구조이고, 6~8단계 전이라 ZTNA 판정기(`src/decider.mjs`)에는 연결하지 않았습니다. (보너스 당시 판정기 규칙 `RULE_IDS`는 시작 틀 그대로였고, 6단계에서 `device_registered`가 더해졌지만 이 보너스와는 여전히 연결되지 않았습니다.) 이 결과는 직접 돌린 연습이며 심판 판정이 아닙니다.
 
 - `xdr/web-injection/decide.mjs`: `decide(alert)` 하나만 내보내며 다른 파일·패키지를 불러오지 않고 파일·네트워크도 쓰지 않습니다. 반환은 `{ action, confidence, reason }`이고 0.85 이상 block, 0.5 이상 alert, 그 아래 record입니다. 뚜렷한 신호(SQL 구문, 스크립트 태그, `../` 반복, 명령 구분자)가 같은 주소에서 8번 이상 반복돼야 block입니다. 낱말만 닮은 단서(select, SQL, 스크립트 등)는 설명에 "공격이 아니다"라고 적혀 있어도 alert까지만 올립니다.
 - `xdr/web-injection/patterns.json`: 근거 패턴 4개(`sql_injection_repeat`, `script_injection_repeat`, `path_traversal_repeat`, `command_separator_repeat`)와 기준 값입니다. 모두 ATT&CK T1190이 근거이고 `decide.mjs` 맨 위 상수와 값이 같습니다.
@@ -64,7 +100,7 @@
 
 ## 보너스: 무차별 로그인 공격 탐지 현재 상태
 
-연습 경보(`xdr/fixtures/brute-force.json`, 가상 28건)만 다루는 부품입니다. 6~8단계 전이라 ZTNA 판정기(`src/decider.mjs`)에는 연결하지 않았고, 판정기 규칙(`RULE_IDS`)도 시작 틀 그대로입니다. 이 결과는 직접 돌린 연습이며 심판 판정이 아닙니다.
+연습 경보(`xdr/fixtures/brute-force.json`, 가상 28건)만 다루는 부품입니다. 6~8단계 전이라 ZTNA 판정기(`src/decider.mjs`)에는 연결하지 않았습니다. (보너스 당시 판정기 규칙 `RULE_IDS`는 시작 틀 그대로였고, 6단계에서 `device_registered`가 더해졌지만 이 보너스와는 여전히 연결되지 않았습니다.) 이 결과는 직접 돌린 연습이며 심판 판정이 아닙니다.
 
 - `xdr/brute-force/decide.mjs`: `decide(alert)` 하나만 내보내며 다른 파일·패키지를 불러오지 않고 파일·네트워크도 쓰지 않습니다. 반환은 `{ action, confidence, reason }`입니다. 확신도 0.85 이상이면 block, 0.5 이상이면 alert, 그 아래는 record입니다.
 - `xdr/brute-force/patterns.json`: 근거 패턴 두 개(같은 주소의 실패 연속 T1110.001, 여러 계정에 같은 비밀번호 T1110.003)와 기준 값입니다. `decide.mjs` 맨 위 상수와 값이 같습니다.
