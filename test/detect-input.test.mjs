@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { detect, findCompoundSuspects, readDetectEvent, readDetectEvents } from '../src/detect.mjs';
+import { checkDetection } from '../scripts/detect-test.mjs';
 
 const normal = { at: '2026-10-01T00:00:00.000Z', method: 'GET', identity: { sub: 'learner_fixture' },
   deviceId: '0123456789abcdef', decision: 'allow' };
@@ -76,7 +77,6 @@ test('다량 조회와 낯선 네트워크가 함께일 때만 의심', () => {
   assert.deepEqual(both, { action: 'observe',
     suspicious: [{ subject: 'learner_fixture', reasonCode: 'unusual_network_burst', deviceId: null }] });
   assert.deepEqual(detect(reads(121, { network: 'usual' })), { action: 'observe' });
-  assert.deepEqual(detect(reads(121)), { action: 'observe' });
   assert.deepEqual(detect(reads(100, { network: 'unusual' })), { action: 'observe' });
   assert.deepEqual(detect(reads(120, { network: 'unusual' })), { action: 'observe' });
 });
@@ -103,9 +103,20 @@ test('의심 결과에는 사용자와 이유 코드만 있고 순서가 뒤섞�
   assert.ok(!text.includes('MEMO_TEXT') && !text.includes('TOKEN_VALUE'));
 });
 
-test('이상한 network 값은 낯선 것으로 치지 않는다', () => {
+test('이상한 network 값은 낯선 것으로 치지 않고 네트워크 값이 없는 사건으로 본다', () => {
   for (const network of ['UNUSUAL', 'foreign', 1, {}]) assert.equal(readDetectEvent({ ...normal, network }).network, null);
-  assert.deepEqual(detect(reads(121).map(e => ({ ...e, network: 'UNUSUAL' }))), { action: 'observe' });
+  const result = detect(reads(121).map(e => ({ ...e, network: 'UNUSUAL' })));
+  assert.notEqual(result.reasonCode, 'unusual_network_burst');
+  assert.deepEqual(result, { action: 'propose_revocation', reasonCode: 'burst_read', subject: 'learner_fixture' });
+});
+
+test('계약 모양 사건(네트워크 값 없음)은 계약대로 120건 초과만 회수 제안', async () => {
+  assert.deepEqual(detect(reads(121)), { action: 'propose_revocation', reasonCode: 'burst_read', subject: 'learner_fixture' });
+  assert.deepEqual(detect(reads(120)), { action: 'observe' });
+  const twoUsers = [...reads(121), ...reads(30, { owner: 'other_fixture' })];
+  assert.equal(detect(twoUsers).subject, 'learner_fixture');
+  const results = await checkDetection(detect);
+  assert.deepEqual(results.filter(item => !item.passed), []);
 });
 
 const DEVICE_A = '0123456789abcdef';

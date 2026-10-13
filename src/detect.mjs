@@ -89,15 +89,40 @@ export function findCompoundSuspects(events) {
   return suspects;
 }
 
+// 계약(docs/DETECT_EVENTS.md) 모양의 사건에는 네트워크 값이 없습니다. 한 사용자의 GET 사건에 네트워크 값이
+// 하나도 없을 때만 계약대로 10분 구간 120건 초과를 회수 제안(burst_read) 대상으로 봅니다.
+// 네트워크 값이 있는 사용자는 위 복합 규칙만 따르므로, 평소 네트워크(usual)의 다량 조회는 제안하지 않습니다.
+function findContractBurst(events) {
+  const bySubject = new Map();
+  for (const event of events) {
+    if (event.method !== 'GET') continue;
+    if (!bySubject.has(event.subject)) bySubject.set(event.subject, []);
+    bySubject.get(event.subject).push(event);
+  }
+  for (const [subject, reads] of bySubject) {
+    if (reads.some(event => event.network !== null)) continue;
+    const times = reads.map(event => Date.parse(event.at)).sort((a, b) => a - b);
+    let start = 0;
+    for (let end = 0; end < times.length; end += 1) {
+      while (times[end] - times[start] >= BURST_WINDOW_MS) start += 1;
+      if (end - start + 1 > BURST_OVER) return subject;
+    }
+  }
+  return null;
+}
+
 // 정상 사건은 전처럼 { action: 'observe' }만 돌려줍니다. 접속 허용/거부 응답(decide)과는 별개인 탐지 결과입니다.
-// 복합 의심이 있으면 suspicious 목록을 더하고, 대상 기기 한 개가 확인될 때만 회수 제안으로 바꿉니다.
+// 복합 의심에 대상 기기 한 개가 확인되면 그 기기의 회수 제안, 계약 모양 사건의 다량 조회면 계약의 회수 제안을 냅니다.
 // 이 함수는 제안만 합니다. 실제 회수와 걸린 시간은 운영 쪽(심판)이 확인하며 여기서 기기 권한을 바꾸지 않습니다.
 export function detect(events) {
   const { events: read } = readDetectEvents(events);
   const suspicious = findCompoundSuspects(read);
-  if (suspicious.length === 0) return { action: 'observe' };
   const target = suspicious.find(item => item.deviceId !== null);
-  if (!target) return { action: 'observe', suspicious };
-  return { action: 'propose_revocation', reasonCode: target.reasonCode, subject: target.subject,
-    deviceId: target.deviceId, suspicious };
+  if (target) {
+    return { action: 'propose_revocation', reasonCode: target.reasonCode, subject: target.subject,
+      deviceId: target.deviceId, suspicious };
+  }
+  const burstSubject = findContractBurst(read);
+  if (burstSubject) return { action: 'propose_revocation', reasonCode: 'burst_read', subject: burstSubject };
+  return suspicious.length > 0 ? { action: 'observe', suspicious } : { action: 'observe' };
 }
