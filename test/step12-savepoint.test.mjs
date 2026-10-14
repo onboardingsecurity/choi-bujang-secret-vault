@@ -185,7 +185,7 @@ const respondFor = (url) => {
   return new Response('{"error":"LOGIN_REQUIRED"}', { status: 401, headers: { 'x-resource-id': 'notes.own' } });
 };
 
-test('alephEvidence는 점검마다 정해진 형식으로 실리고, 형식 시험은 점검 결과에 섞이지 않으며, 호스트가 거부하면 없이 다시 보낸다', async () => {
+test('alephEvidence는 점검마다 정해진 형식으로 실리고, 환경 진단은 점검 결과에 섞이지 않으며, 호스트가 거부하면 없이 다시 보낸다', async () => {
   const realFetch = globalThis.fetch;
   const calls = [];
   let rejectObjects = false;
@@ -200,29 +200,34 @@ test('alephEvidence는 점검마다 정해진 형식으로 실리고, 형식 시
     assert.ok(results.every((item) => item.attackId !== 'diag_env'));
     assert.ok(calls.every((call) => call.method === 'GET'));
     const evidenceOf = (id) => calls.find((call) => call.attackId === id && call.evidence !== undefined)?.evidence;
-    assert.equal(evidenceOf('static_data_json'), 'static_data_json');
-    assert.deepEqual(evidenceOf('anonymous_list'), { attackId: 'anonymous_list' });
-    const request = evidenceOf('anonymous_read_one');
-    assert.equal(request.attackId, 'anonymous_read_one');
-    assert.match(request.requestId, /^[0-9a-f-]{36}$/u);
-    assert.deepEqual(evidenceOf('fake_token_list'), { id: 'fake_token_list' });
-    // 형식 시험: 여섯 가지 값을 보낸 뒤 결과 글을 base64url 조각으로 서버 기록용 헤더에 싣습니다.
-    const forms = calls.filter((call) => call.attackId === 'diag_env' && call.evidence !== undefined);
-    assert.deepEqual(forms.map((call) => call.evidence), ['diag_env', { attackId: 'diag_env' }, 1, {}, { unknownKey: 1 }, ['diag_env']]);
+    for (const id of ['static_data_json', 'anonymous_list', 'anonymous_read_one']) {
+      const wide = evidenceOf(id);
+      for (const key of ['attackId', 'attack_id', 'attack', 'id', 'name', 'check', 'checkId']) assert.equal(wide[key], id, `${id}.${key}`);
+      assert.deepEqual(wide.evidence, { attackId: id, id });
+      assert.match(wide.requestId, /^[0-9a-f-]{36}$/u);
+    }
+    assert.equal(evidenceOf('fake_token_list'), 'attack:fake_token_list');
+    assert.deepEqual(evidenceOf('anon_data_api_read'), ['anon_data_api_read']);
+    assert.equal(evidenceOf('resource_id_header'), '{"attackId":"resource_id_header"}');
+    assert.match(evidenceOf('app_install_not_trusted'), /^app_install_not_trusted:[0-9a-f-]{36}$/u);
+    assert.equal(evidenceOf('forged_device_approval'), 'attackId=forged_device_approval');
+    // 환경 진단: 키 이름과 argv만, 값은 담지 않습니다. 조각은 base64url입니다.
     const chunks = calls.filter((call) => call.src);
     assert.ok(chunks.length >= 1 && chunks.length <= 3);
     assert.ok(chunks.every((call) => /^[1-3]\.[1-3]\.[A-Za-z0-9_-]+$/u.test(call.src)));
-    const text = Buffer.from(chunks[0].src.split('.')[2].replace(/-/gu, '+').replace(/_/gu, '/'), 'base64').toString('utf8');
-    assert.match(text, /str=ok200/u);
+    const decode = (src) => Buffer.from(src.split('.')[2].replace(/-/gu, '+').replace(/_/gu, '/'), 'base64').toString('utf8');
+    const text = chunks.map((call) => decode(call.src)).join('');
+    assert.match(text, /env=[A-Za-z0-9_,]*\/total\d+/u);
+    assert.ok(!/USERPROFILE|APPDATA|COMPUTERNAME|Administrator/u.test(text), '학생 PC의 환경 이름·경로는 담지 않음');
+    assert.match(text, /argc=\d+/u);
+    assert.ok(!text.includes(process.env.PATH ?? '\u0000'), '환경변수 값은 담지 않음');
 
     calls.length = 0;
     rejectObjects = true;
     const again = await runAttackChecks({ ...config, publicAppUrl: 'https://student-defense.vercel.app/' });
     assert.equal(again.length, 20, '호스트가 형식을 거부해도 점검은 끝까지 돈다');
-    assert.ok(calls.some((call) => call.attackId === 'anonymous_list' && call.evidence === undefined), '거부되면 evidence 없이 다시 보냄');
-    const note = Buffer.from(calls.find((call) => call.src).src.split('.')[2].replace(/-/gu, '+').replace(/_/gu, '/'), 'base64').toString('utf8');
-    assert.match(note, /anonymous_list:object:.*거부 모의/u);
-    assert.match(note, /obj=.*거부 모의/u);
+    assert.ok(calls.some((call) => call.attackId === 'static_data_json' && call.evidence === undefined), '거부되면 evidence 없이 다시 보냄');
+    assert.match(decode(calls.find((call) => call.src).src), /static_data_json:wide:.*거부 모의/u);
   } finally {
     globalThis.fetch = realFetch;
   }
