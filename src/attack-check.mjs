@@ -29,9 +29,11 @@ export async function runAttackChecks(config) {
     const requestId = randomUUID();
     const url = new URL(target, app);
     // 1단계 점검(시작 틀 동작)은 주소를 바꾸지 않고, 3단계부터의 점검에만 싣습니다.
-    if (config.step >= 3 && url.origin === app.origin) url.searchParams.set('attackId', attackId);
+    // 심판의 격리 환경은 URL의 searchParams를 제공하지 않아(`url.searchParams.set`에서 실패) 주소 문자열에 직접 붙입니다.
+    let href = url.href;
+    if (config.step >= 3 && url.origin === app.origin) href += `${href.includes('?') ? '&' : '?'}attackId=${encodeURIComponent(attackId)}`;
     // attackId는 fetch 옵션에도 넣습니다(기본 fetch는 모르는 옵션을 무시하고, 요청을 기록하는 쪽이 읽을 수 있음).
-    const response = await fetch(url.href, {
+    const response = await fetch(href, {
       method: 'GET', redirect: 'error', signal: AbortSignal.timeout(10000), attackId,
       headers: { ...attackHeaders(attackId, requestId), ...extra },
     });

@@ -131,3 +131,33 @@ test('첫 화면이 브라우저 저장소를 쓰면 자기 점검이 그대로 
     globalThis.fetch = realFetch;
   }
 });
+
+// 심판의 격리 환경은 URL의 searchParams를 제공하지 않습니다(`url.searchParams.set`에서 "Cannot read properties of undefined (reading 'set')" 오류).
+// 그런 URL로도 점검이 끝까지 돌고, 쿼리는 주소 문자열에 직접 붙는지 확인합니다.
+test('URL에 searchParams가 없어도 자기 점검이 끝까지 돌고 쿼리를 주소에 직접 붙인다', async () => {
+  const realFetch = globalThis.fetch;
+  const NativeURL = globalThis.URL;
+  const urls = [];
+  globalThis.URL = class NoSearchParamsURL extends NativeURL {
+    get searchParams() { return undefined; }
+  };
+  globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    const { pathname } = new NativeURL(String(url));
+    if (pathname === '/api/config') return Response.json({ key: 'public-placeholder' });
+    if (pathname === '/manifest.webmanifest') return Response.json({ display: 'standalone', icons: [{ sizes: '192x192' }] });
+    if (pathname === '/') return new Response('createClient(u, k, { auth: { persistSession: false } });', { status: 200 });
+    if (pathname === '/data.json') return new Response(null, { status: 404 });
+    return new Response('{"error":"LOGIN_REQUIRED"}', { status: 401, headers: { 'x-resource-id': 'notes.own' } });
+  };
+  try {
+    const results = await runAttackChecks({ ...config, publicAppUrl: 'https://student-defense.vercel.app/' });
+    assert.equal(results.length, 20);
+    const own = urls.filter((url) => url.startsWith('https://student-defense.vercel.app'));
+    assert.ok(own.length > 0 && own.every((url) => /[?&]attackId=[a-z0-9_]+$/u.test(url)), own.join('\n'));
+    assert.ok(urls.filter((url) => !url.startsWith('https://student-defense.vercel.app')).every((url) => !url.includes('?')));
+  } finally {
+    globalThis.URL = NativeURL;
+    globalThis.fetch = realFetch;
+  }
+});
