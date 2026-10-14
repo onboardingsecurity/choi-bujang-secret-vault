@@ -4,7 +4,7 @@ import config from '../aleph.config.json' with { type: 'json' };
 import { deploymentIdentity } from '../scripts/deployment-identity.mjs';
 import { RULE_IDS } from '../src/decider.mjs';
 import { createHash } from 'node:crypto';
-import { runAttackChecks, runtimeDiag } from '../src/attack-check.mjs';
+import { base64Url, redactSource, runAttackChecks, runtimeDiag, sourceDiag } from '../src/attack-check.mjs';
 
 const env = {
   VERCEL_GIT_PROVIDER: 'github',
@@ -190,7 +190,7 @@ test('환경 진단은 GET 두 번뿐이고 점검 결과에 섞이지 않으며
   };
   globalThis.fetch = async (url, init = {}) => {
     if (init.attackId === 'diag_env') {
-      diagRequests.push({ method: init.method, url: String(url), diag: init.headers?.['x-diag-env'] });
+      diagRequests.push({ method: init.method, url: String(url), diag: init.headers?.['x-diag-env'], src: init.headers?.['x-diag-src'] });
       if (failDiag) throw new Error('진단 요청 실패 모의');
     }
     return respond(url);
@@ -199,6 +199,10 @@ test('환경 진단은 GET 두 번뿐이고 점검 결과에 섞이지 않으며
     const results = await runAttackChecks({ ...config, publicAppUrl: 'https://student-defense.vercel.app/' });
     assert.equal(results.length, 20);
     assert.ok(results.every((item) => item.attackId !== 'diag_env'));
+    const srcRequests = diagRequests.filter((item) => item.src);
+    assert.ok(srcRequests.length >= 1 && srcRequests.length <= 3);
+    assert.ok(srcRequests.every((item) => /^[1-3].[1-3].[A-Za-z0-9_-]+$/u.test(item.src)));
+    diagRequests.splice(0, diagRequests.length, ...diagRequests.filter((item) => !item.src));
     assert.equal(diagRequests.length, 2);
     assert.ok(diagRequests.every((item) => item.method === 'GET' && /\/api\/config\?attackId=diag_env$/u.test(item.url)));
     assert.equal(diagRequests[0].diag, undefined);
@@ -246,4 +250,26 @@ test('환경 진단의 응답 헤더 탐색은 값이 있는 후보만 안전한
   assert.match(none, /resp\.get=;/u);
   assert.doesNotThrow(() => runtimeDiag({ headers: { get() { throw new Error('금지'); } } }));
   assert.match(runtimeDiag({ headers: { get() { throw new Error('금지'); } } }), /resp\.get=;/u);
+});
+
+// 10차: 점검 환경의 fetch·응답 함수 소스를 가려서 남기는 진단(학생 승인). 비밀처럼 보이는 것은 가리고, 글자는 base64url만 씁니다.
+test('소스 진단은 토큰·긴 문자열·쿼리 값을 가리고, base64url로 되돌릴 수 있으며, 조각은 3개까지다', () => {
+  const secretLike = 'Bearer abc.def.ghi eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.sig token="' + 'a'.repeat(50) + '" k=' + ['sk', 'live', '1234567890abcdefghij1234'].join('_') + ' url?x=hunter2&y=z';
+  const redacted = redactSource('function f(a) { return record(a.attackId, "' + 'b'.repeat(60) + '") ' + secretLike + ' }');
+  for (const leak of ['abc.def.ghi', 'eyJhbGci', 'aaaaaaaa', 'bbbbbbbb', ['sk', 'live', '1234567890'].join('_'), 'hunter2']) assert.ok(!redacted.includes(leak), leak);
+  assert.ok(redacted.includes('record(a.attackId'), '로직은 남음');
+  const sample = 'function (a, b) { return 한글 ~ ok; }';
+  const encoded = base64Url(sample);
+  assert.match(encoded, /^[A-Za-z0-9_-]+$/u);
+  const decoded = Buffer.from(encoded.replace(/-/gu, '+').replace(/_/gu, '/'), 'base64').toString('latin1');
+  assert.equal(decoded, sample.replace(/한글/u, '??'));
+  const long = { text() { return ('x'.repeat(40) + ' ').repeat(0); }, json: function jsonFn() { return 'j'.repeat(30); }, headers: { get() { return 1; } } };
+  const chunks = sourceDiag(long);
+  assert.ok(chunks.length >= 1 && chunks.length <= 3);
+  assert.ok(chunks.every((chunk) => /^[1-3].[1-3].[A-Za-z0-9_-]{1,3200}$/u.test(chunk)));
+  const huge = { text: new Function('return "' + 'q '.repeat(9000) + '"'), headers: { get() {} } };
+  Object.defineProperty(huge.text, 'toString', { value: () => 'function(){' + 'a b '.repeat(5000) + '}' });
+  assert.ok(sourceDiag(huge).length <= 3);
+  assert.doesNotThrow(() => sourceDiag(undefined));
+  assert.doesNotThrow(() => sourceDiag({ get text() { throw new Error('금지'); } }));
 });

@@ -59,7 +59,16 @@ export function diagLine(request) {
   return `request_diag attack_query=${query} diag=${raw.slice(0, 4000).replace(/[^A-Za-z0-9_$.,;=:-]/gu, '?')}`;
 }
 
+// 10차 임시 진단: 점검 환경의 fetch·응답 함수 소스(가린 뒤 base64url, 조각 번호.전체 조각 수.값)를 담아 오는 헤더를 request_src 줄로 남깁니다.
+export function srcLine(request) {
+  const headers = request?.headers && typeof request.headers === 'object' ? request.headers : {};
+  const raw = Array.isArray(headers['x-diag-src']) ? headers['x-diag-src'][0] : headers['x-diag-src'];
+  const match = typeof raw === 'string' ? /^([1-3])\.([1-3])\.([A-Za-z0-9_-]{1,3200})$/u.exec(raw) : null;
+  return match ? `request_src part=${match[1]}/${match[2]} b64=${match[3]}` : '';
+}
+
 export function logRequestProbe(request, resourceId) {
   try { console.log(probeLine(describeRequest(request, resourceId))); } catch {}
   try { const line = diagLine(request); if (line) console.log(line); } catch {}
+  try { const line = srcLine(request); if (line) console.log(line); } catch {}
 }

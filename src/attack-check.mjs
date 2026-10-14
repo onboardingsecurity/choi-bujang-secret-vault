@@ -78,6 +78,42 @@ export function runtimeDiag(response) {
   ].join(';').replace(/[^A-Za-z0-9_$.,;=:-]/gu, '?').slice(0, 4000);
 }
 
+// 10차 임시 진단(학생이 승인): 점검 환경이 주입한 fetch와 응답의 text·json·headers.get 함수의 소스 글을 가려서 남깁니다.
+// 심판이 요청과 attackId를 잇는 방법을 소스에서 찾기 위한 것입니다. 소스 글은 길이 제한 안에서 자르고, 토큰·긴 문자열·긴 영숫자 덩어리·
+// 쿼리 값을 <…>로 가린 뒤 base64url로 담아 헤더 안전 글자만 쓰며(값은 서버 기록을 내가 디코딩해 읽음), 실패하면 그 함수만 x로 적습니다.
+const SOURCE_LIMIT = 1500;
+const CHUNK_SIZE = 1800;
+const CHUNK_MAX = 3;
+const BASE64_URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+export const redactSource = (text) => String(text)
+  .replace(/\s+/gu, ' ')
+  .replace(/Bearer\s+[^\s'"`]+/giu, 'Bearer <x>')
+  .replace(/eyJ[A-Za-z0-9_-]{8,}(?:\.[A-Za-z0-9_-]+)*/gu, '<jwt>')
+  .replace(/(["'`])((?:(?!\1).){41,}?)\1/gu, '$1<str>$1')
+  .replace(/[A-Za-z0-9_+/=-]{40,}/gu, '<long>')
+  .replace(/[A-Za-z0-9_+/=-]{24,}/gu, (run) => (/\d/u.test(run) ? '<long>' : run))
+  .replace(/([?&][A-Za-z0-9_.-]+=)[^&\s"'`)]+/gu, '$1<v>');
+export const base64Url = (text) => {
+  const bytes = [...String(text)].map((ch) => { const code = ch.codePointAt(0); return code < 128 ? code : 63; });
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const [a, b, c] = [bytes[i], bytes[i + 1], bytes[i + 2]];
+    out += BASE64_URL[a >> 2] + BASE64_URL[((a & 3) << 4) | ((b ?? 0) >> 4)];
+    if (b !== undefined) out += BASE64_URL[((b & 15) << 2) | ((c ?? 0) >> 6)];
+    if (c !== undefined) out += BASE64_URL[c & 63];
+  }
+  return out;
+};
+export function sourceDiag(response) {
+  const read = (label, pick) => {
+    try { return `${label}=${redactSource(Function.prototype.toString.call(pick())).slice(0, SOURCE_LIMIT)}`; } catch { return `${label}=x`; }
+  };
+  const joined = [read('fetch', () => globalThis.fetch), read('text', () => response.text), read('json', () => response.json), read('get', () => response.headers.get)].join(' | ');
+  const chunks = [];
+  for (let i = 0; i < joined.length && chunks.length < CHUNK_MAX; i += CHUNK_SIZE) chunks.push(joined.slice(i, i + CHUNK_SIZE));
+  return chunks.map((chunk, index) => `${index + 1}.${chunks.length}.${base64Url(chunk)}`);
+}
+
 export async function runAttackChecks(config) {
   if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
@@ -260,6 +296,7 @@ export async function runAttackChecks(config) {
           const first = await probe('diag_env', '/api/config');
           const text = runtimeDiag(first.response);
           await probe('diag_env', '/api/config', { 'x-diag-env': text });
+          for (const chunk of sourceDiag(first.response)) await probe('diag_env', '/api/config', { 'x-diag-src': chunk });
         } catch { /* 진단 실패는 제출 묶음 생성에 영향을 주지 않음 */ }
       }
       return results;

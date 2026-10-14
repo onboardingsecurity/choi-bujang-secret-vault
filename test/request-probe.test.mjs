@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { describeRequest, diagLine, logRequestProbe, probeLine } from '../src/request-probe.mjs';
+import { describeRequest, diagLine, logRequestProbe, probeLine, srcLine } from '../src/request-probe.mjs';
 
 const secretBearer = `Bearer ${'a'.repeat(20)}.${'b'.repeat(20)}.${'c'.repeat(20)}`;
 const request = {
@@ -88,4 +88,13 @@ test('같은 헤더가 합쳐져 "값, 값"으로 와도 표식 값이 기록에
   const info = describeRequest({ method: 'GET', url: '/api/notes', headers: { 'x-attack-id': 'anonymous_list, anonymous_list' } });
   assert.deepEqual(info.marked, [['x-attack-id', 'anonymous_list, anonymous_list']]);
   assert.match(probeLine(info), /marked=x-attack-id:anonymous_list,_anonymous_list /u);
+});
+
+test('x-diag-src 헤더가 형식에 맞을 때만 request_src 줄을 남긴다', () => {
+  assert.equal(srcLine({ headers: {} }), '');
+  assert.equal(srcLine(undefined), '');
+  assert.equal(srcLine({ headers: { 'x-diag-src': '1.2.aGk_-' } }), 'request_src part=1/2 b64=aGk_-');
+  assert.equal(srcLine({ headers: { 'x-diag-src': '4.2.aGk' } }), '');
+  assert.equal(srcLine({ headers: { 'x-diag-src': '1.1.a b;c' } }), '');
+  assert.equal(srcLine({ headers: { 'x-diag-src': '1.1.' + 'a'.repeat(3201) } }), '');
 });
