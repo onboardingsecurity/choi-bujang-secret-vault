@@ -43,7 +43,8 @@ test('12단계 자기 점검은 20개 안에서 모양이 맞고, GET만 보내�
     const target = new URL(String(url));
     sent.push(`${init.method ?? 'GET'} ${target.origin}${target.pathname}`);
     const headers = init.headers ?? {};
-    records.push({ attackId: headers['x-attack-id'], alephAttackId: headers['x-aleph-attack-id'], requestId: headers['x-request-id'] });
+    records.push({ attackId: headers['x-attack-id'], alephAttackId: headers['x-aleph-attack-id'], requestId: headers['x-request-id'],
+      origin: target.origin, queryAttackId: target.searchParams.get('attackId'), query: target.search, optionAttackId: init.attackId });
     if (target.pathname === '/api/config') return Response.json({ url: 'https://example-project.supabase.co', key: 'public-placeholder' });
     if (target.pathname.startsWith('/api/notices')) return new Response(null, { status: 404 });
     if (target.pathname === '/manifest.webmanifest') {
@@ -87,6 +88,10 @@ test('12단계 자기 점검은 20개 안에서 모양이 맞고, GET만 보내�
     // 요청을 보내지 않은 점검(not_run·미실행)에는 그 attackId로 보낸 요청이 없습니다.
     for (const record of records) {
       assert.equal(record.alephAttackId, record.attackId);
+      assert.equal(record.optionAttackId, record.attackId);
+      // 본인 앱 주소로 가는 요청은 요청 주소에도 같은 attackId를 싣고, Supabase 직접 읽기에는 쿼리를 붙이지 않습니다(붙이면 400).
+      if (record.origin === 'https://student-defense.vercel.app') assert.equal(record.queryAttackId, record.attackId, record.attackId);
+      else assert.equal(record.query, '', `${record.origin}에는 쿼리를 붙이지 않음`);
       assert.match(record.requestId ?? '', /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
       assert.ok(record.attackId in byId, `결과에 없는 attackId로 보낸 요청: ${record.attackId}`);
     }

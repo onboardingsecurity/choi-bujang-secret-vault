@@ -5,6 +5,9 @@ import { randomUUID } from 'node:crypto';
 // 12단계 심판(S12_SCREEN_MISMATCH, 「실행 기록 대조」): 심판은 제출 묶음이 보낸 요청을 기록하고, observed에 결과를 적은
 // attackId마다 그 attackId로 보낸 요청이 기록에 있는지 대조합니다. 심판이 attackId를 어디서 읽는지는 받은 계약에 없어
 // 요청마다 attackId를 두 헤더에 싣고 새 요청 ID(x-request-id)를 붙이며, observed에는 그 점검이 보낸 요청의 ID를 적습니다.
+// 헤더만으로는 심판이 읽지 못해(3adf694 제출: 요청을 보낸 점검 8건이 모두 「기록 없음」) 본인 앱 주소로 가는 요청에는
+// 요청 주소의 쿼리(?attackId=)에도 같은 값을 싣습니다. 쿼리는 본인 앱 응답을 바꾸지 않는 것을 배포본에서 확인했습니다.
+// Supabase 직접 읽기에는 쿼리를 붙이지 않습니다(모르는 쿼리를 열 필터로 읽어 400이 나와 시험 결과가 달라짐).
 // 다른 점검의 응답을 빌려 쓰지 않고, 요청을 보내지 않은 점검은 not_run 또는 미실행으로 적습니다.
 const attackHeaders = (attackId, requestId) => ({ 'x-attack-id': attackId, 'x-aleph-attack-id': attackId, 'x-request-id': requestId });
 
@@ -24,8 +27,12 @@ export async function runAttackChecks(config) {
   // GET 요청 하나를 attackId 표시·요청 ID와 함께 보냅니다. 격리 환경 규칙에 따라 GET만 씁니다.
   const probe = async (attackId, target, extra = {}) => {
     const requestId = randomUUID();
-    const response = await fetch(new URL(target, app).href, {
-      method: 'GET', redirect: 'error', signal: AbortSignal.timeout(10000),
+    const url = new URL(target, app);
+    // 1단계 점검(시작 틀 동작)은 주소를 바꾸지 않고, 3단계부터의 점검에만 싣습니다.
+    if (config.step >= 3 && url.origin === app.origin) url.searchParams.set('attackId', attackId);
+    // attackId는 fetch 옵션에도 넣습니다(기본 fetch는 모르는 옵션을 무시하고, 요청을 기록하는 쪽이 읽을 수 있음).
+    const response = await fetch(url.href, {
+      method: 'GET', redirect: 'error', signal: AbortSignal.timeout(10000), attackId,
       headers: { ...attackHeaders(attackId, requestId), ...extra },
     });
     return { response, requestId };

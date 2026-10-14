@@ -63,7 +63,7 @@
 | 탐지 연습 | `npm run detect:test` | 6줄 모두 「통과」 | 실행함 |
 | 배포본 요청 표 | `npm run recon:table` | 실제 API 줄이 모두 「기대와 일치」(일치 19, 다름 0), `artifacts/recon-table.md` 생성 | 실행함(로그인 없는 줄만) |
 | 로컬 가상 화면 | `npm run build -- --local` | 가상 화면만 확인. 서버 함수·로그인·패스키는 동작하지 않음 | 미실행 |
-| 제출 묶음 | `npm run bundle` | 단계 12, 규칙 5개, 직접 점검 20개(GET만 보내고, 결과를 적은 점검에는 요청 ID, 보내지 않은 점검은 `not_run`·`미실행`) | 학생이 `c4d4378`로 제출해 `S12_BUNDLE_UNSUPPORTED`, `56fe6c2`로 제출해 `S12_SCREEN_MISMATCH`. 수정본은 모의 격리 환경의 실행 기록 대조에서 문제 없음(코딩 도구), 재제출 전 |
+| 제출 묶음 | `npm run bundle` | 단계 12, 규칙 5개, 직접 점검 20개(GET만 보내고, 결과를 적은 점검에는 요청 ID, 보내지 않은 점검은 `not_run`·`미실행`) | 학생이 `c4d4378`로 제출해 `S12_BUNDLE_UNSUPPORTED`, `56fe6c2`·`3adf694`로 제출해 `S12_SCREEN_MISMATCH`. 수정본은 모의 격리 환경의 실행 기록 대조에서 헤더·옵션 기준은 문제 없고 주소 기준은 1건 어긋남(코딩 도구), 재제출 전 |
 
 - 판정기와 탐지 연습은 가상 요청이고 엔진의 실제 결과가 아닙니다. 통과해도 엔진의 사건 전달·접속 회수가 연결됐다는 뜻이 아닙니다.
 - 접속 앱 사용: 배포 주소를 열고 로그인 → 「이 기기 승인 요청」 → Supabase SQL Editor에서 `devices`의 그 행을 `approved`로 → 「승인된 이 기기로 확인」 → 자료실과 「탈환 작전실」이 열립니다(2026-10-14 새 Windows PC에서 학생이 실행). 패스키는 고정 배포 주소에만 묶여 로컬에서는 승인할 수 없습니다.
@@ -108,7 +108,7 @@
 
 | 단계 | 처음 낸 커밋 | 심판 결과 | 해결 커밋 | 재제출 결과 |
 | --- | --- | --- | --- | --- |
-| 12단계 | `c4d4378`, 2차 `56fe6c2` | `S12_BUNDLE_UNSUPPORTED`, 2차 `S12_SCREEN_MISMATCH` | `56fe6c2`(1차), 아래 「S12_SCREEN_MISMATCH」의 수정(2차) | 재제출 전 |
+| 12단계 | `c4d4378`, 2차 `56fe6c2`, 3차 `3adf694` | `S12_BUNDLE_UNSUPPORTED`, 2·3차 `S12_SCREEN_MISMATCH`(지목 11건 → 8건) | `56fe6c2`(1차), `3adf694`(2차), 아래 「S12_SCREEN_MISMATCH」의 3차 수정 | 재제출 전 |
 | 11단계 | 기록 없음(코드의 마지막 변경은 `bfba3c6`이고 그 뒤 `0163a29`·`e518c51`·`5e52985`는 README만 바꿈) | 거부 없음 | 없음 | 통과(학생 보고, 제출한 커밋과 제출 횟수는 기록 없음) |
 | 10단계 | `f0db501`, 2차 `789b1c1` | `S10_BACKUP_UNVERIFIED` 두 번 | `50596ac`(README) | 통과(학생 보고, 재제출한 커밋은 기록 없음) |
 | 9단계 | `a06fe52` | `S09_NO_PROPOSAL` | `4d859b2` | 통과(학생 보고) |
@@ -124,6 +124,9 @@
 - 심판이 attackId를 어디서 읽는지는 받은 계약과 심판 메모에 없어, 헤더 이름은 추정입니다.
 - 재현(수정 전 → 후): 모의 격리 환경이 요청마다 attackId 헤더·요청 ID·응답 상태를 기록하고, 그 기록을 제출 묶음과 대조했습니다(코딩 도구가 실제 실행. 심판의 실제 환경은 아님). `56fe6c2`에서는 심판과 같은 11건이 같은 순서로 「요청 기록 없음」으로 나왔고, 수정본에서는 결과를 적은 8건 모두 요청 기록·요청 ID·상태가 맞았으며 미실행 12건은 요청이 0건이었습니다.
 - 한계: 헤더 이름이 심판이 읽는 이름과 다르면 같은 사유가 다시 나올 수 있습니다. 「타인 메모 조회」(`other_user_access`)는 로그인이 필요해 여전히 미실행입니다. 작전실 화면과 서버 기록 줄은 바꾸지 않았습니다(실패한 조건은 실행 기록 대조 하나).
+- 재제출 결과(`3adf694`): 같은 조건이 다시 맞지 않았고 지목이 11건에서 8건(`static_data_json`, `anonymous_list`, `anonymous_read_one` 외 5건)으로 줄었습니다. 줄어든 3건은 `확인 불가`를 `미실행 (확인 불가: …)`로 바꾼 3건과 같고, 남은 8건은 요청을 보내 결과를 적은 점검 8개와 같습니다. 그래서 심판은 `미실행`으로 적은 점검은 요청이 없는 것으로 받아들이지만, 헤더(`x-attack-id`, `x-aleph-attack-id`)로 표시한 요청은 attackId로 읽지 못한 것으로 보입니다(추정. 심판이 보는 방식은 받은 계약에 없음).
+- 3차 해결(`src/attack-check.mjs`, `test/step12-savepoint.test.mjs`): 표시 방법을 두 가지 더했습니다. (1) 본인 앱 주소로 가는 요청의 주소에 `?attackId=<점검 이름>`을 붙입니다(배포본에서 `/data.json`·`/api/notes`·`/api/notes/:id`·`/api/war-room`·`/api/device/status`·`manifest.webmanifest`·`/`의 응답이 쿼리 없을 때와 같은 것을 읽기 요청으로 확인했고, 1단계 점검 경로는 주소를 바꾸지 않음). (2) `fetch` 옵션에도 `attackId`를 넣습니다(기본 `fetch`는 모르는 옵션을 무시함). Supabase 직접 읽기(`anon_data_api_read`)의 주소에는 쿼리를 붙이지 않습니다. 붙이면 PostgREST가 열 필터로 읽어 401이 아니라 400이 나와 점검의 의미가 달라지기 때문이고(배포본의 공개 키로 읽기 요청을 보내 확인), 그 요청은 헤더와 옵션으로만 표시하며 같은 점검의 본인 앱 요청(`GET /api/config`)에는 쿼리를 붙입니다.
+- 3차 재현·한계: 모의 격리 환경에서 `3adf694`는 헤더로 읽는 심판 모델에서만 맞고 주소로 읽는 모델에서는 8건 모두 맞지 않았으며, 수정본은 헤더로 읽는 모델, 옵션으로 읽는 모델, 셋 중 아무거나 읽는 모델에서 문제가 없었습니다. 주소만 읽는 모델에서는 `anon_data_api_read` 1건이 어긋납니다(Supabase 요청에 쿼리를 붙일 수 없어 observed의 401이 기록에 없음). 이 모델들은 제가 추정으로 만든 것이라 실제 심판의 방식과 같다는 보장은 없고, 어느 쪽도 아니면 같은 사유가 다시 나옵니다.
 
 ### S12_BUNDLE_UNSUPPORTED: 제출 묶음이 격리 환경에서 끝까지 실행되지 않음
 
@@ -188,7 +191,7 @@
 | 바꾼 곳 | 내용 |
 | --- | --- |
 | `scripts/deployment-identity.mjs` | 허용 단계에 12를 더했습니다. 13은 거부합니다. |
-| `src/attack-check.mjs` | 12단계를 받습니다. 점검 한도가 20개라 새 항목을 늘리지 않고 `forged_device_approval`에 로그인 없는·가짜 토큰의 `GET /api/war-room` 요청을 합쳤습니다. 로그인한 작전실 요청은 보내지 않고 미실행으로 남습니다. `S12_BUNDLE_UNSUPPORTED` 뒤로는 GET만 보내고, 쓰기 요청이 필요한 점검은 `not_run`입니다. `S12_SCREEN_MISMATCH` 뒤로는 요청마다 attackId와 요청 ID를 싣고 observed에 그 요청 ID를 적습니다(위 「심판 결과와 해결 기록」). |
+| `src/attack-check.mjs` | 12단계를 받습니다. 점검 한도가 20개라 새 항목을 늘리지 않고 `forged_device_approval`에 로그인 없는·가짜 토큰의 `GET /api/war-room` 요청을 합쳤습니다. 로그인한 작전실 요청은 보내지 않고 미실행으로 남습니다. `S12_BUNDLE_UNSUPPORTED` 뒤로는 GET만 보내고, 쓰기 요청이 필요한 점검은 `not_run`입니다. `S12_SCREEN_MISMATCH` 뒤로는 요청마다 attackId를 헤더·요청 주소(쿼리)·`fetch` 옵션에 싣고 요청 ID를 붙여 observed에 그 요청 ID를 적습니다(위 「심판 결과와 해결 기록」). |
 | `test/step12-savepoint.test.mjs` | 11단계 저장점 시험의 이름을 바꾸고 12단계 기대(`step` 12, 13 거부, 작전실 요청 포함)로 고쳤습니다. |
 
 - 판정기(`src/decider.mjs`)는 바꾸지 않았습니다. `RULE_IDS` 5개(`starter.deny`, `device_registered`, `step_up_required`, `own_notes_zone`, `instructor_notice_zone`)는 그대로입니다.
