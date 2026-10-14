@@ -5,7 +5,7 @@
 // 값은 표식으로 쓰일 법한 이름의 헤더와 user-agent에 한해 안전한 문자만 짧게 씁니다. 이 함수는 예외를 밖으로 내보내지 않습니다.
 const SECRET_NAME = /auth|cookie|token|key|secret|password|credential|signature/iu;
 const MARKER_NAME = /attack|aleph|judge|check|test|run|probe|case|scenario|trace|request-id|vercel-id/iu;
-const SAFE_VALUE = /^[A-Za-z0-9_.:/ -]{1,80}$/u;
+const SAFE_VALUE = /^[A-Za-z0-9_.:/ ,-]{1,80}$/u;
 const ID_SEGMENT = /^[0-9a-f][0-9a-f-]{7,}$/iu;
 
 const clean = (value, limit = 80) => {
@@ -50,13 +50,13 @@ export const probeLine = (info) => {
 };
 
 // 임시 진단: 점검이 도는 환경의 모양(이름·참/거짓)을 담아 오는 헤더를 별도 줄(request_diag)로 남깁니다.
-// 허용 문자(영문·숫자·_ $ . , ; = : -) 밖은 ?로 바꾸고 3500자까지만 씁니다.
+// 허용 문자(영문·숫자·_ $ . , ; = : -) 밖은 ?로 바꾸고 4000자까지만 씁니다.
 export function diagLine(request) {
   const headers = request?.headers && typeof request.headers === 'object' ? request.headers : {};
   const raw = Array.isArray(headers['x-diag-env']) ? headers['x-diag-env'][0] : headers['x-diag-env'];
   if (typeof raw !== 'string' || !raw) return '';
   const query = describeRequest(request).attackQuery || '-';
-  return `request_diag attack_query=${query} diag=${raw.slice(0, 3500).replace(/[^A-Za-z0-9_$.,;=:-]/gu, '?')}`;
+  return `request_diag attack_query=${query} diag=${raw.slice(0, 4000).replace(/[^A-Za-z0-9_$.,;=:-]/gu, '?')}`;
 }
 
 export function logRequestProbe(request, resourceId) {

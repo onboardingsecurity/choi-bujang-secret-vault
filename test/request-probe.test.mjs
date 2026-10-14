@@ -74,7 +74,7 @@ test('x-diag-env 헤더가 있으면 request_diag 줄을 따로 남기고, 허�
   assert.equal(diagLine(undefined), '');
   const line = diagLine({ url: '/api/config?attackId=diag_env', headers: { 'x-diag-env': 'fetch.native=0;globals=A,B;bad="x" y' } });
   assert.equal(line, 'request_diag attack_query=diag_env diag=fetch.native=0;globals=A,B;bad=?x??y');
-  assert.ok(diagLine({ url: '/a', headers: { 'x-diag-env': 'a'.repeat(9000) } }).length < 3600);
+  assert.ok(diagLine({ url: '/a', headers: { 'x-diag-env': 'a'.repeat(9000) } }).length < 4100);
   const lines = [];
   const original = console.log;
   console.log = (...args) => lines.push(args.join(' '));
@@ -82,4 +82,10 @@ test('x-diag-env 헤더가 있으면 request_diag 줄을 따로 남기고, 허�
   assert.equal(lines.length, 2);
   assert.match(lines[0], /^request_probe /u);
   assert.match(lines[1], /^request_diag attack_query=diag_env diag=node=v1$/u);
+});
+
+test('같은 헤더가 합쳐져 "값, 값"으로 와도 표식 값이 기록에 보인다(쉼표 허용)', () => {
+  const info = describeRequest({ method: 'GET', url: '/api/notes', headers: { 'x-attack-id': 'anonymous_list, anonymous_list' } });
+  assert.deepEqual(info.marked, [['x-attack-id', 'anonymous_list, anonymous_list']]);
+  assert.match(probeLine(info), /marked=x-attack-id:anonymous_list,_anonymous_list /u);
 });

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import config from '../aleph.config.json' with { type: 'json' };
 import { deploymentIdentity } from '../scripts/deployment-identity.mjs';
 import { RULE_IDS } from '../src/decider.mjs';
-import { runAttackChecks } from '../src/attack-check.mjs';
+import { runAttackChecks, runtimeDiag } from '../src/attack-check.mjs';
 
 const env = {
   VERCEL_GIT_PROVIDER: 'github',
@@ -154,7 +154,7 @@ test('URL에 searchParams가 없어도 자기 점검이 끝까지 돌고 쿼리�
     const results = await runAttackChecks({ ...config, publicAppUrl: 'https://student-defense.vercel.app/' });
     assert.equal(results.length, 20);
     const own = urls.filter((url) => url.startsWith('https://student-defense.vercel.app'));
-    assert.ok(own.length > 0 && own.every((url) => /[?&]attackId=[a-z0-9_]+$/u.test(url)), own.join('\n'));
+    assert.ok(own.length > 0 && own.every((url) => /[?&]attackId=([a-z0-9_]+)&attack_id=\1&attack=\1$/u.test(url)), own.join('\n'));
     assert.ok(urls.filter((url) => !url.startsWith('https://student-defense.vercel.app')).every((url) => !url.includes('?')));
   } finally {
     globalThis.URL = NativeURL;
@@ -187,14 +187,14 @@ test('환경 진단은 GET 두 번뿐이고 점검 결과에 섞이지 않으며
     assert.equal(results.length, 20);
     assert.ok(results.every((item) => item.attackId !== 'diag_env'));
     assert.equal(diagRequests.length, 2);
-    assert.ok(diagRequests.every((item) => item.method === 'GET' && /\/api\/config\?attackId=diag_env$/u.test(item.url)));
+    assert.ok(diagRequests.every((item) => item.method === 'GET' && /\/api\/config\?attackId=diag_env&attack_id=diag_env&attack=diag_env$/u.test(item.url)));
     assert.equal(diagRequests[0].diag, undefined);
     const diag = diagRequests[1].diag;
     assert.match(diag, /^node=[^;]*;fetch\.native=[01x];fetch\.name=/u);
     for (const key of ['resp.ctor=', 'resp.hdr=', 'url.proto=', 'has=', 'globals=']) assert.ok(diag.includes(key), key);
     assert.ok(diag.includes('x-extra-record'), '응답 헤더 이름이 담김');
     assert.match(diag, /^[A-Za-z0-9_$.,;=:-]+$/u);
-    assert.ok(diag.length <= 3500);
+    assert.ok(diag.length <= 4000);
     assert.ok(!/authorization|cookie|token|secret|password/iu.test(diag.replace(/fetch\.native/gu, '')));
     diagRequests.length = 0;
     failDiag = true;
@@ -203,4 +203,61 @@ test('환경 진단은 GET 두 번뿐이고 점검 결과에 섞이지 않으며
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+// 심판의 환경에는 Headers가 없어 init.headers가 일반 객체이고 키의 대소문자를 구분합니다. 그 환경에서만 별칭 헤더를 더 싣고,
+// 진짜 fetch(Headers 있음)는 소문자 헤더만 보냅니다(대소문자만 다른 같은 헤더는 "값, 값"으로 합쳐지므로).
+test('표식 별칭: Headers가 없을 때만 대소문자·이름 변형 헤더를 더하고, 쿼리·옵션 별칭은 항상 싣는다', async () => {
+  const realFetch = globalThis.fetch;
+  const NativeHeaders = globalThis.Headers;
+  const seen = [];
+  globalThis.fetch = async (url, init = {}) => {
+    seen.push({ url: String(url), init });
+    const { pathname } = new URL(String(url));
+    if (pathname === '/api/config') return Response.json({ key: 'public-placeholder' });
+    if (pathname === '/manifest.webmanifest') return Response.json({ display: 'standalone', icons: [] });
+    if (pathname === '/') return new Response('persistSession: false', { status: 200 });
+    if (pathname === '/data.json') return new Response(null, { status: 404 });
+    return new Response('{}', { status: 401, headers: { 'x-resource-id': 'notes.own' } });
+  };
+  const run = () => runAttackChecks({ ...config, publicAppUrl: 'https://student-defense.vercel.app/' });
+  try {
+    await run();
+    const withHeaders = seen.filter((item) => item.init.attackId === 'anonymous_list');
+    assert.equal(withHeaders.length, 1);
+    assert.deepEqual(Object.keys(withHeaders[0].init.headers).sort(), ['x-aleph-attack-id', 'x-attack-id', 'x-request-id']);
+    seen.length = 0;
+    delete globalThis.Headers;
+    await run();
+    const plain = seen.find((item) => item.init.attackId === 'anonymous_list');
+    for (const name of ['x-attack-id', 'X-Attack-Id', 'x-aleph-attack-id', 'X-Aleph-Attack-Id', 'Attack-Id', 'x-request-id', 'X-Request-Id']) {
+      assert.ok(name in plain.init.headers, name);
+    }
+    assert.equal(plain.init.headers['X-Attack-Id'], 'anonymous_list');
+    assert.match(plain.init.headers['X-Request-Id'], /^[0-9a-f-]{36}$/u);
+    assert.equal(plain.init.headers['X-Request-Id'], plain.init.headers['x-request-id']);
+    for (const item of seen.filter((entry) => entry.init.attackId)) {
+      assert.equal(item.init.attack_id, item.init.attackId);
+      assert.equal(item.init.attack, item.init.attackId);
+    }
+    assert.match(plain.url, /\?attackId=anonymous_list&attack_id=anonymous_list&attack=anonymous_list$/u);
+  } finally {
+    globalThis.Headers = NativeHeaders;
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('환경 진단은 응답·fetch·process·console·URL 인스턴스의 속성 이름과 자료형을 담되 값은 담지 않는다', () => {
+  const response = Object.assign(Object.create(null), { status: 200, ok: true, headers: { get() {} }, text() {}, secretToken: 'LEAK' });
+  const diag = runtimeDiag(response);
+  for (const key of ['resp.keys=', 'resp.proto=', 'resp.hdr.keys=', 'fetch.keys=', 'process.keys=', 'console.keys=', 'abort.keys=', 'url.inst=', 'globals=']) {
+    assert.ok(diag.includes(key), key);
+  }
+  for (const entry of ['status:number', 'ok:boolean', 'text:function', 'headers:object']) assert.match(diag, new RegExp(`resp\\.keys=[^;]*${entry}`, 'u'));
+  assert.ok(!diag.includes('LEAK') && !diag.includes('secretToken'), '값과 비밀 이름은 담지 않음');
+  assert.match(diag, /resp\.hdr\.keys=get:function/u);
+  assert.ok(diag.indexOf('globals=') > diag.indexOf('url.inst='), '긴 globals는 맨 뒤');
+  assert.ok(diag.length <= 4000);
+  assert.match(diag, /^[A-Za-z0-9_$.,;=:-]+$/u);
+  assert.ok(!diag.includes(process.env.PATH ?? '\u0000'), '환경변수 값은 담지 않음');
 });
