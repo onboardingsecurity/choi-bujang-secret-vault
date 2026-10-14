@@ -74,7 +74,7 @@
 
 | 하려는 일 | 방법 | 결과 | 상태 |
 | --- | --- | --- | --- |
-| 한 기기의 자료 접근 중지 | SQL Editor에서 `update public.devices set status = 'revoked' where id = '<id>' returning id, label, status;` | 그 기기로 확인된 세션도 바로 닫힙니다(자료 API가 요청마다 기기 상태를 다시 봄). 화면은 상태 조회에서 회수를 알고 자료실을 닫습니다. | 실행함: `내 윈도우`가 `revoked`로 바뀌고 화면이 닫힘(학생 보고, 기기 목록 화면 확인). 회수 뒤 서버의 403 로그 줄(`device_not_approved`)은 이번에 찾지 못했고 미확인 |
+| 한 기기의 자료 접근 중지 | SQL Editor에서 `update public.devices set status = 'revoked' where id = '<id>' returning id, label, status;` | 그 기기로 확인된 세션도 바로 닫힙니다(자료 API가 요청마다 기기 상태를 다시 봄). 화면에는 주기적으로 상태를 조회하는 타이머가 없고, 상태 조회나 자료 API의 403(`DEVICE_NOT_APPROVED`)을 받을 때 회수를 알고 자료실을 닫습니다. | 실행함(2026-10-14): 시험 기기를 `revoked`로 바꾼 뒤 「추가」를 눌렀더니 Vercel Logs에 `POST /api/notes` 403과 `notes_denied reason=device_not_approved resource=notes.own method=POST`가 14:12:25(GMT+9)에 남음(학생이 줄을 붙여 줌, 화면 사진은 없음). 처음 시도에서 줄이 없던 것은 회수 뒤 메모 요청을 보내지 않고 상태 조회만 했기 때문으로 보임 |
 | 탐지가 낸 회수 제안 | `detect()`는 `propose_revocation`을 돌려줄 뿐 실제로 회수하지 않습니다. 회수는 위 SQL로 사람이 합니다. | | 엔진의 실제 회수는 미실행 |
 | 서비스 전체 중지 | Vercel 프로젝트의 배포를 내리는 일은 Vercel 대시보드에서 합니다. 이 저장소의 코드는 하지 않습니다. | | 미실행 |
 
@@ -94,12 +94,15 @@
 
 1. `npm install` → 2. `node --test "test/*.test.mjs"`(142개) → 3. `npm run decider:test`, `npm run detect:test` → 4. 환경변수 세 개를 Vercel에 넣고 배포 → 5. `curl -s <배포주소>/aleph.json`으로 커밋 확인 → 6. `curl -i <배포주소>/api/war-room`이 401과 `X-Resource-Id: warroom.own`(실행함) → 7. `npm run recon:table` → 8. 브라우저에서 로그인·기기 승인·작전실 확인 → 9. `npm run bundle`.
 
+### 새로 확인한 것 (2026-10-14, 학생이 Vercel Logs에서 붙여 준 줄)
+
+- 작전실 화면 수치와 서버 기록의 대조: `war_room_view request=24ba6783-… rules=5 detect=not_connected devices_approved=2 devices_pending=0 devices_revoked=0 policy_verified=true policy_version=9단계-통과-시점 policy_sha=23c296e3423a policy_changed=0 note_verified=true note_version=9단계-통과-시점 note_entries=1`. 줄의 칸 12개는 `recordOf`가 만드는 칸과 같고, 값은 저장소와 맞습니다(규칙 5개, 정책 사본 해시 앞 12자리 `23c296e3423a`, 차이 0건, 메모 사본 1건). 화면에 2가 보였다는 것은 학생 보고이고 화면 사진은 없습니다.
+- 회수 뒤 서버의 거부 기록: `POST /api/notes` 403과 `notes_denied reason=device_not_approved resource=notes.own method=POST`(위 「중지」 표 참고).
+
 ### 아직 확인하지 못한 것
 
 - 반 엔진이 실제 경로에서 부르는 판정기와 탐지의 결과, 실제 접속 회수, 총공세 41종(목록이 저장소에 없음).
 - 로그인 정상 요청 줄(`recon:table`의 로그인 요청). 기기 확인을 마친 로그인 토큰을 터미널로 가져올 방법이 앱에 없어 미실행으로 남겼고, 대신 화면에서 직접 확인했습니다.
-- 작전실 요청 ID와 Vercel 로그의 숫자 대조: `rules=5`, `detect=not_connected`는 Vercel 줄에서 확인했고, `devices_approved=2`는 학생 보고입니다(캡처에서 값이 잘림).
-- 회수 뒤 Vercel 로그의 `notes_denied reason=device_not_approved` 줄(이번에는 찾지 못함).
 - 배포 로그에서 서버 함수 개수 한도 오류 여부(배포는 성공했고 한도 오류는 보지 못했으나 따로 찾아보지 않음).
 
 ## 심판 결과와 해결 기록
