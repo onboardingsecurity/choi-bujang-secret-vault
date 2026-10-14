@@ -1,10 +1,7 @@
 // 화면이 로그인(Auth)에 쓰는 Supabase 주소와 공개용(publishable) 키를 서버 환경변수에서 내려 줍니다.
 // HTML 소스에는 키를 적지 않습니다. 서버 전용 키(SUPABASE_SECRET_KEY)는 여기서 읽지도 내보내지도 않습니다.
-import { logRequestProbe } from '../../src/request-probe.mjs';
-
 export default function handler(request, response) {
   response.setHeader('Cache-Control', 'no-store');
-  logRequestProbe(request, 'config.public');
   if (request.method !== 'GET') {
     response.setHeader('Allow', 'GET');
     return response.status(405).json({ error: 'METHOD_NOT_ALLOWED' });

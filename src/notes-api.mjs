@@ -5,7 +5,6 @@ import config from '../aleph.config.json' with { type: 'json' };
 import { createLoginVerifier } from './verify-login.mjs';
 import { RESOURCE_HEADER } from './resources.mjs';
 import { readDeviceSession } from './device-session.mjs';
-import { logRequestProbe } from './request-probe.mjs';
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
@@ -53,7 +52,6 @@ export async function deviceGate(user, db) {
 export async function guard(request, response, allowed, resourceId, { requireDevice = true } = {}) {
   response.setHeader('Cache-Control', 'no-store');
   response.setHeader(RESOURCE_HEADER, resourceId);
-  logRequestProbe(request, resourceId);
   if (!allowed.includes(request.method)) {
     logDenied('method_not_allowed', resourceId, request.method);
     response.setHeader('Allow', allowed.join(', '));
