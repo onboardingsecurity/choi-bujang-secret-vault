@@ -24,6 +24,84 @@
 
 `src/decider.mjs`와 `src/detect.mjs`의 로컬 시험은 반 엔진이나 운영 심판의 결과가 아닙니다. 1단계 이후 제출 묶음 계약 `aleph.defense.submission.v2`는 `scripts/bundle.mjs`에 남아 있으며, 코딩 도구가 해당 단계의 최신 배포 주소와 Git 원격을 맞춘 뒤 사용합니다.
 
+## 설치·실행·중지·복구 안내 (12단계)
+
+검사한 커밋은 `93d1e41`입니다(코드 기준이며 이 안내를 넣는 커밋은 README만 바꿉니다). 아래에서 「실행함」은 2026-10-14에 직접 실행한 결과이고, 심판 판정이 아닙니다. 실행하지 않은 것은 「미실행」으로 적었습니다. 비밀값은 어디에도 적지 않았고, 값이 필요한 곳은 이름만 적었습니다.
+
+### 누가 만들었나
+
+| 구분 | 내용 |
+| --- | --- |
+| 제공된 시작 틀 (첫 커밋 `24bcae9`) | `docs/`의 요청·사건 계약, `package/` 안내 양식, `xdr/fixtures/` 가상 경보 6종, `scripts/bundle.mjs`·`build-public.mjs`·`deployment-identity.mjs`·`xdr-run.mjs`, 미구현 뼈대 `api/ai.js`·`api/threat-intel.js`(모든 요청에 501). `src/decider.mjs`·`src/detect.mjs`·`src/attack-check.mjs`·`public/index.html`·`src/verify-login.mjs`도 시작점은 시작 틀이었고, 이후 학생이 고쳤습니다. |
+| 제공된 **ALEPH SDP 엔진** (이 저장소에 없음) | 요청의 신원·기기·경로를 확인한 뒤 `decide(request)`를 부르는 반 엔진, 사건을 `detect`에 넘기고 접속을 실제로 회수하는 운영 쪽, 심판 접수 서버(`judgeIssuer`). 이 저장소에서는 부를 수 없어서 엔진이 실제 경로에서 부르는 결과, 사건 전달, 접속 회수는 시험하지 못했습니다(미실행). |
+| 학생이 만든 것 | 판정기 규칙 5개(`src/decider.mjs`의 `RULE_IDS`), 탐지 규칙(`src/detect.mjs`), 자료실 메모 API(`api/notes/`, `src/notes-api.mjs`), 로그인 검증(`src/verify-login.mjs`), 접속 앱(`public/index.html`, `manifest.webmanifest`, `sw.js`, `offline.html`, 아이콘), 기기 승인(`api/device/`, `src/device-approval.mjs`, `src/device-session.mjs`), 복원(`src/policy-diff.mjs`, `src/policy-restore.mjs`, `api/restore/note.js`, `backup/`), 탈환 작전실(`api/war-room/`, `src/war-room.mjs`), 요청 표(`scripts/recon-table.mjs`), 웹 주입·무차별 로그인 보너스(`xdr/web-injection/`, `xdr/brute-force/`), 시험(`test/`). |
+
+### 설치
+
+1. Node.js 22 이상과 Git이 필요합니다(`package.json`의 `engines`). 이 PC는 Node 24.18.1에서 실행했습니다.
+2. 저장소를 받고 저장소 루트에서 `npm install`을 실행합니다. 의존 패키지는 `@simplewebauthn/server`, `@supabase/supabase-js`, `jose` 세 개이며 버전이 고정되어 있습니다.
+   - 정상: 종료 코드 0, `found 0 vulnerabilities`(실행함, 새 PC에서 `node_modules` 없이 실행). 이 단계를 건너뛰면 시험이 `ERR_MODULE_NOT_FOUND`로 실패합니다.
+3. Vercel에서 이 GitHub 저장소를 새 프로젝트로 연결합니다. 빌드 명령 `npm run build`와 공개 폴더 `public`은 `vercel.json`에 있습니다. 빌드는 Vercel이 주는 저장소·커밋·배포 주소가 없으면 일부러 실패합니다.
+4. 환경변수는 Vercel의 비밀 입력란에 직접 넣습니다. 값은 저장소·채팅·화면 캡처에 남기지 않습니다.
+
+   | 이름 | 용도 |
+   | --- | --- |
+   | `SUPABASE_URL` | Supabase 프로젝트 주소 |
+   | `SUPABASE_SECRET_KEY` | 서버 전용 키. 서버 함수만 씁니다 |
+   | `SUPABASE_PUBLISHABLE_KEY` | 로그인 화면용 공개 키. `/api/config`로 내려갑니다. 없으면 로그인이 503 |
+
+5. Supabase에 표를 만듭니다. 기기 승인용 `devices`·`device_sessions` 표의 SQL은 아래 「11단계 현재 상태」에 있습니다. 메모 표 `public.notes`의 SQL은 이 저장소에 없고 학생이 SQL Editor에서 직접 만들었습니다(5단계 기록). 새 프로젝트에서 처음부터 복구하려면 이 표 구조와 권한을 다시 만들어야 하며, 이 절차는 미실행입니다.
+6. 배포 뒤 `curl -s <배포주소>/aleph.json`의 `"commit"`이 방금 푸시한 커밋으로 시작하는지 봅니다(실행함: `93d1e41` 확인).
+
+### 실행
+
+| 하려는 일 | 명령(저장소 루트) | 정상 결과 | 상태 |
+| --- | --- | --- | --- |
+| 전체 시험 | `node --test "test/*.test.mjs"` | 142개 통과 | 실행함 |
+| 시작 틀 시험 | `npm run test:package` | 3개 통과 | 실행함 |
+| 판정기 연습 | `npm run decider:test` | 4줄 모두 「통과」 | 실행함 |
+| 탐지 연습 | `npm run detect:test` | 6줄 모두 「통과」 | 실행함 |
+| 배포본 요청 표 | `npm run recon:table` | 실제 API 줄이 모두 「기대와 일치」(일치 19, 다름 0), `artifacts/recon-table.md` 생성 | 실행함(로그인 없는 줄만) |
+| 로컬 가상 화면 | `npm run build -- --local` | 가상 화면만 확인. 서버 함수·로그인·패스키는 동작하지 않음 | 미실행 |
+| 제출 묶음 | `npm run bundle` | 단계·규칙·자기 점검 결과 | 12단계 저장점 뒤에 실행 예정 |
+
+- 판정기와 탐지 연습은 가상 요청이고 엔진의 실제 결과가 아닙니다. 통과해도 엔진의 사건 전달·접속 회수가 연결됐다는 뜻이 아닙니다.
+- 접속 앱 사용: 배포 주소를 열고 로그인 → 「이 기기 승인 요청」 → Supabase SQL Editor에서 `devices`의 그 행을 `approved`로 → 「승인된 이 기기로 확인」 → 자료실과 「탈환 작전실」이 열립니다(2026-10-14 새 Windows PC에서 학생이 실행). 패스키는 고정 배포 주소에만 묶여 로컬에서는 승인할 수 없습니다.
+
+### 중지
+
+서버는 Vercel의 서버 함수라 따로 켜 둔 프로세스가 없습니다. 판정기·탐지·표 명령은 한 번 실행하고 끝나므로 중지할 것이 없습니다(실행 중이면 `Ctrl+C`). 「중지」는 접속을 끊는 일을 뜻합니다.
+
+| 하려는 일 | 방법 | 결과 | 상태 |
+| --- | --- | --- | --- |
+| 한 기기의 자료 접근 중지 | SQL Editor에서 `update public.devices set status = 'revoked' where id = '<id>' returning id, label, status;` | 그 기기로 확인된 세션도 바로 닫힙니다(자료 API가 요청마다 기기 상태를 다시 봄). 화면은 상태 조회에서 회수를 알고 자료실을 닫습니다. | 실행함: `내 윈도우`가 `revoked`로 바뀌고 화면이 닫힘(학생 보고, 기기 목록 화면 확인). 회수 뒤 서버의 403 로그 줄(`device_not_approved`)은 이번에 찾지 못했고 미확인 |
+| 탐지가 낸 회수 제안 | `detect()`는 `propose_revocation`을 돌려줄 뿐 실제로 회수하지 않습니다. 회수는 위 SQL로 사람이 합니다. | | 엔진의 실제 회수는 미실행 |
+| 서비스 전체 중지 | Vercel 프로젝트의 배포를 내리는 일은 Vercel 대시보드에서 합니다. 이 저장소의 코드는 하지 않습니다. | | 미실행 |
+
+- 한계: 이미 발급된 로그인 토큰은 만료(최대 1시간)까지 서버 검증을 통과합니다. 기기 회수는 그 토큰으로 오는 자료 요청을 403으로 막지만 토큰을 무효로 만들지는 않습니다.
+
+### 복구
+
+복구는 침해 전에 검증한 사본에서 대상만 되돌립니다. 복원 전에 사본을 다시 검증하고, 실패하면 멈추는 규칙은 아래 10단계 절 「복원 전에 사본을 검증합니다」를 따릅니다.
+
+1. 정책 확인: `node src/policy-diff.mjs` → 정상은 `차이 없음`(실행함: 사본 `9단계-통과-시점`, 차이 0건). 다르면 `node src/policy-restore.mjs`로 미리보기를 보고, 실제 변경은 `--apply --confirm=<사본 해시 앞 12자리>`를 함께 줄 때만 합니다.
+2. 메모 한 건 복원: 로그인한 승인된 기기에서 `POST /api/restore/note`에 `dryRun: true`를 먼저 보냅니다. 로그인이 없거나 사본에 없는 ID, 소유자가 아닌 계정은 거부됩니다. 실제 배포본의 복원은 이번에 다시 실행하지 않았습니다(미실행, 시험으로는 확인).
+3. 잘못 배포했을 때: Git에서는 `git revert <커밋>`으로 되돌리는 커밋을 만들고(`git reset --hard`는 쓰지 않습니다), Vercel의 이전 배포로 되돌리는 일은 Vercel 대시보드에서 합니다. 둘 다 이번에 실행하지 않았습니다(미실행). 기존 메모와 학습 DB 자료를 지우는 명령은 넣지 않았습니다.
+4. 기기를 잃어버렸거나 의심스러울 때: 위 「중지」의 회수 SQL. 이 PC를 다시 쓰려면 회수된 행을 되살리지 말고 새로 승인 요청을 합니다.
+5. 복구 뒤에는 위 「실행」의 시험과 `npm run recon:table`을 다시 돌려 앞의 정상·거부 결과가 그대로인지 봅니다. 메모·정책 복원 뒤의 1~9단계 순서 표는 아래 10단계 절 「다시 실행하는 순서」에 있습니다.
+
+### 재현 순서 (새로 받은 저장소에서)
+
+1. `npm install` → 2. `node --test "test/*.test.mjs"`(142개) → 3. `npm run decider:test`, `npm run detect:test` → 4. 환경변수 세 개를 Vercel에 넣고 배포 → 5. `curl -s <배포주소>/aleph.json`으로 커밋 확인 → 6. `curl -i <배포주소>/api/war-room`이 401과 `X-Resource-Id: warroom.own`(실행함) → 7. `npm run recon:table` → 8. 브라우저에서 로그인·기기 승인·작전실 확인 → 9. `npm run bundle`.
+
+### 아직 확인하지 못한 것
+
+- 반 엔진이 실제 경로에서 부르는 판정기와 탐지의 결과, 실제 접속 회수, 총공세 41종(목록이 저장소에 없음).
+- 로그인 정상 요청 줄(`recon:table`의 로그인 요청). 기기 확인을 마친 로그인 토큰을 터미널로 가져올 방법이 앱에 없어 미실행으로 남겼고, 대신 화면에서 직접 확인했습니다.
+- 작전실 요청 ID와 Vercel 로그의 숫자 대조: `rules=5`, `detect=not_connected`는 Vercel 줄에서 확인했고, `devices_approved=2`는 학생 보고입니다(캡처에서 값이 잘림).
+- 회수 뒤 Vercel 로그의 `notes_denied reason=device_not_approved` 줄(이번에는 찾지 못함).
+- 배포 로그에서 서버 함수 개수 한도 오류 여부(배포는 성공했고 한도 오류는 보지 못했으나 따로 찾아보지 않음).
+
 ## 심판 결과와 해결 기록
 
 커밋 32개(`24bcae9`~`4d859b2`)를 처음부터 끝까지 보고, 실패를 고친 커밋은 수정 전후 파일을 꺼내 같은 가상 입력으로 실행해 비교했습니다(2026-10-13 코딩 도구가 실제 실행). 재현은 심판 판정이 아니고 통과 여부는 학생 보고입니다. 심판이 보낸 실제 입력은 볼 수 없어 원인은 재현으로 추정한 것입니다.
