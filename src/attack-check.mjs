@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -34,8 +34,8 @@ export async function runAttackChecks(config) {
     return [{ attackId: 'anonymous_note_read', expected: '비로그인 화면에서 가상 메모를 확인',
       observed: staticRead.visible ? '비로그인 요청에서 공개 가상 메모 확인 표시가 보임' : `비로그인 요청에서 확인 표시가 보이지 않음 (HTTP ${staticRead.status})` }];
   }
-  if (config.step >= 3 && config.step <= 11) {
-    // 3~11단계: 토큰 없는 요청과 가짜 토큰 요청만 실제로 보냅니다. 비밀번호는 이 파일에 넣지 않으므로
+  if (config.step >= 3 && config.step <= 12) {
+    // 3~12단계: 토큰 없는 요청과 가짜 토큰 요청만 실제로 보냅니다. 비밀번호는 이 파일에 넣지 않으므로
     // 로그인 상태의 추가·수정·삭제와 A/B 교차 접근은 여기서 보내지 않고 '미실행'으로 남깁니다.
     const probeId = '11111111-1111-4111-8111-111111111111';
     const noteBody = JSON.stringify({ title: 'x', body: 'y' });
@@ -157,11 +157,15 @@ export async function runAttackChecks(config) {
           pageLine = 'GET / → 요청 실패';
         }
         const forged = JSON.stringify({ label: 'x', credential: {}, status: 'approved' });
+        // 12단계: 점검이 20개까지라 새 항목을 늘리지 않고, 탈환 작전실(GET /api/war-room)의 토큰 없는 요청과 가짜 토큰 요청을 이 항목에 합칩니다.
+        const warRoom = config.step >= 12
+          ? [await send('GET', '/api/war-room'), await send('GET', '/api/war-room', undefined, fakeToken, '가짜 토큰 ')]
+          : [];
         results.push(
           { attackId: 'app_install_not_trusted', expected: '설치용 manifest가 있어도 설치 표시만으로 기기가 승인되지 않고, 로그인 토큰·기기 키를 브라우저 저장소에 두지 않아야 함',
             observed: `${manifestLine}; ${pageLine}` },
-          { attackId: 'forged_device_approval', expected: '로그인 없는 기기 상태 조회와 승인된 척하는 가짜 토큰 등록 요청은 거부(401)되어야 함',
-            observed: observe([await send('GET', '/api/device/status'), await send('POST', '/api/device/register', forged, fakeToken, '가짜 토큰 ')]) },
+          { attackId: 'forged_device_approval', expected: `로그인 없는 기기 상태 조회와 승인된 척하는 가짜 토큰 등록 요청${config.step >= 12 ? ', 로그인 없는·가짜 토큰의 작전실 요약 요청' : ''}은 거부(401)되어야 함`,
+            observed: observe([await send('GET', '/api/device/status'), await send('POST', '/api/device/register', forged, fakeToken, '가짜 토큰 '), ...warRoom]) },
           { attackId: 'unapproved_device_notes', expected: '로그인했어도 서버가 승인·확인하지 않은 기기의 메모 요청은 403으로 거부되고 메모가 보이지 않아야 함',
             observed: '미실행 (이 스크립트는 로그인 요청을 보내지 않음. 학생이 승인 전 화면에서 확인)' });
       }

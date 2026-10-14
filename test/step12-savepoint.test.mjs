@@ -13,27 +13,28 @@ const env = {
   VERCEL_URL: 'student-defense-123.vercel.app',
 };
 
-test('저장소의 설정은 11단계이고 빌드 식별이 허용 경로·원본 주소·복원 경로를 싣는다', () => {
-  assert.equal(config.step, 11);
+test('저장소의 설정은 12단계이고 빌드 식별이 허용 경로·원본 주소·복원 경로를 싣는다', () => {
+  assert.equal(config.step, 12);
   const identity = deploymentIdentity(env, config);
-  assert.equal(identity.step, 11);
+  assert.equal(identity.step, 12);
   assert.equal(identity.restoreRoute, 'POST /api/restore/note');
   assert.ok(!config.allowedRoutes.includes(config.restoreRoute));
   assert.deepEqual(identity.allowedRoutes, config.allowedRoutes);
   assert.equal(identity.originalApiUrl, config.originalApiUrl);
-  assert.throws(() => deploymentIdentity(env, { ...config, step: 12 }));
+  assert.throws(() => deploymentIdentity(env, { ...config, step: 13 }));
+  assert.equal(deploymentIdentity(env, { ...config, step: 11 }).step, 11);
   for (const restoreRoute of [null, 'GET /api/restore/note', 'POST https://x.example/api', 'POST /api/restore/note?x=1']) {
     assert.throws(() => deploymentIdentity(env, { ...config, restoreRoute }), /restoreRoute/u);
   }
   assert.equal(deploymentIdentity(env, { ...config, step: 9, restoreRoute: null }).restoreRoute, undefined);
 });
 
-test('RULE_IDS에는 구현한 규칙 이름만 있다(11단계는 판정기 규칙을 더하지 않음)', () => {
+test('RULE_IDS에는 구현한 규칙 이름만 있다(11·12단계는 판정기 규칙을 더하지 않음)', () => {
   assert.deepEqual(RULE_IDS, ['starter.deny', 'device_registered', 'step_up_required', 'own_notes_zone', 'instructor_notice_zone']);
 });
 
 // 가짜 fetch만 씁니다. 실제 배포 주소·Supabase에는 요청을 보내지 않습니다.
-test('11단계 자기 점검은 20개 안에서 모양이 맞고, 보내지 않은 점검은 미실행·확인 불가로 남는다', async () => {
+test('12단계 자기 점검은 20개 안에서 모양이 맞고, 보내지 않은 점검은 미실행·확인 불가로 남는다', async () => {
   const realFetch = globalThis.fetch;
   const sent = [];
   const denied = () => new Response('{"error":"LOGIN_REQUIRED"}', { status: 401, headers: { 'x-resource-id': 'notes.own' } });
@@ -49,6 +50,7 @@ test('11단계 자기 점검은 20개 안에서 모양이 맞고, 보내지 않�
       return new Response("<!-- localStorage에 두지 않음 -->\n<script>\n// localStorage 설명 주석\ncreateClient(u, k, { auth: { persistSession: false } });\n</script>", { status: 200 });
     }
     if (target.pathname.startsWith('/api/device/')) return new Response('{"error":"LOGIN_REQUIRED"}', { status: 401, headers: { 'x-resource-id': 'devices.own' } });
+    if (target.pathname === '/api/war-room') return new Response('{"error":"LOGIN_REQUIRED"}', { status: 401, headers: { 'x-resource-id': 'warroom.own' } });
     if (target.pathname === '/api/restore/note' || target.pathname.startsWith('/api/notes')) return denied();
     if (target.pathname === '/data.json') return new Response(null, { status: 404 });
     return new Response('{"code":"42501"}', { status: 401 });
@@ -75,7 +77,8 @@ test('11단계 자기 점검은 20개 안에서 모양이 맞고, 보내지 않�
     assert.match(byId.restore_without_login, /^POST \/api\/restore\/note → HTTP 401, 가짜 토큰 POST \/api\/restore\/note → HTTP 401, 메모 내용 없음$/u);
     assert.match(byId.app_install_not_trusted, /manifest\.webmanifest → HTTP 200 \(standalone, 아이콘 192x192·512x512\)/u);
     assert.match(byId.app_install_not_trusted, /브라우저 저장소 사용 없음, 로그인 세션 메모리 보관/u);
-    assert.match(byId.forged_device_approval, /^GET \/api\/device\/status → HTTP 401, 가짜 토큰 POST \/api\/device\/register → HTTP 401, 메모 내용 없음$/u);
+    assert.match(byId.forged_device_approval, /^GET \/api\/device\/status → HTTP 401, 가짜 토큰 POST \/api\/device\/register → HTTP 401, GET \/api\/war-room → HTTP 401, 가짜 토큰 GET \/api\/war-room → HTTP 401, 메모 내용 없음$/u);
+    assert.ok(sent.includes('GET https://student-defense.vercel.app/api/war-room'));
     assert.ok(sent.includes('POST https://student-defense.vercel.app/api/restore/note'));
     assert.ok(sent.includes('POST https://student-defense.vercel.app/api/device/register'));
     // 로그인한 계정으로 보낸 요청이 없어야 합니다: 가짜 토큰 요청 말고는 Authorization을 쓰지 않습니다.

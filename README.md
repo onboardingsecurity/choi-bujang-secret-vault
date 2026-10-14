@@ -14,7 +14,7 @@
 
 `vercel.json`은 정적 결과물 `public`을 배포합니다. 빌드 명령 `npm run build`는 Vercel이 제공하는 GitHub 저장소 소유자·이름, 커밋 SHA, 배포 URL을 검증하고 `public/aleph.json`을 생성합니다. 이 값이 없으면 빌드가 실패하므로, 성공한 것처럼 빈 주소를 내보내지 않습니다. `aleph.json`의 내용만으로 저장소 소유권이나 방어 성공을 인정하지 않습니다. 심판이 공개 저장소의 실제 커밋과 배포된 자료를 따로 대조해야 합니다.
 
-(1단계 당시 기록. 지금 `aleph.config.json`에는 실제 저장소·배포 주소가 들어 있고 `step`은 11입니다.) `aleph.config.json`의 `repoUrl`과 `publicAppUrl`은 이전 제출 묶음 방식의 자리표시자입니다. 1단계에서는 학생이 편집하지 않습니다. 2단계 이후 코딩 도구가 필요한 설정과 보호 기능을 단계별로 작성합니다. `npm run bundle`과 `bundle-notes.json`도 1단계의 세 걸음에는 포함되지 않습니다.
+(1단계 당시 기록. 지금 `aleph.config.json`에는 실제 저장소·배포 주소가 들어 있고 `step`은 12입니다.) `aleph.config.json`의 `repoUrl`과 `publicAppUrl`은 이전 제출 묶음 방식의 자리표시자입니다. 1단계에서는 학생이 편집하지 않습니다. 2단계 이후 코딩 도구가 필요한 설정과 보호 기능을 단계별로 작성합니다. `npm run bundle`과 `bundle-notes.json`도 1단계의 세 걸음에는 포함되지 않습니다.
 
 로컬에서 가상 화면만 확인할 때는 `npm run build -- --local`을 사용합니다. 로컬 실행은 Vercel 배포나 심판 접수를 증명하지 않습니다. 저장소의 `src/attack-check.mjs`는 실제 배포가 된 뒤 `/data.json`을 비로그인으로 요청해 공개 가상 메모의 확인 표시를 읽습니다.
 
@@ -63,7 +63,7 @@
 | 탐지 연습 | `npm run detect:test` | 6줄 모두 「통과」 | 실행함 |
 | 배포본 요청 표 | `npm run recon:table` | 실제 API 줄이 모두 「기대와 일치」(일치 19, 다름 0), `artifacts/recon-table.md` 생성 | 실행함(로그인 없는 줄만) |
 | 로컬 가상 화면 | `npm run build -- --local` | 가상 화면만 확인. 서버 함수·로그인·패스키는 동작하지 않음 | 미실행 |
-| 제출 묶음 | `npm run bundle` | 단계·규칙·자기 점검 결과 | 12단계 저장점 뒤에 실행 예정 |
+| 제출 묶음 | `npm run bundle` | 단계 12, 규칙 5개, 자기 점검 결과 | 배포 확인 뒤 학생이 실행(미실행) |
 
 - 판정기와 탐지 연습은 가상 요청이고 엔진의 실제 결과가 아닙니다. 통과해도 엔진의 사건 전달·접속 회수가 연결됐다는 뜻이 아닙니다.
 - 접속 앱 사용: 배포 주소를 열고 로그인 → 「이 기기 승인 요청」 → Supabase SQL Editor에서 `devices`의 그 행을 `approved`로 → 「승인된 이 기기로 확인」 → 자료실과 「탈환 작전실」이 열립니다(2026-10-14 새 Windows PC에서 학생이 실행). 패스키는 고정 배포 주소에만 묶여 로컬에서는 승인할 수 없습니다.
@@ -162,6 +162,20 @@
 | 8단계 첫 묶음의 설명이 7단계 내용 | `bundle-notes.json`을 갱신하지 않음 | 설명을 8단계로 바꿔 묶음을 다시 만듦 | 8단계 기록 |
 
 실패를 고친 것이 아닌 커밋: `67ff4fd`·`35bae81`(2단계 저장점에서 자리표시자 주소를 실제 저장소·배포 주소로 바꿈), `1fbf583`(모든 응답에 `nosniff` 헤더 추가), `e59b9b6`(화면의 공개용 키를 `/api/config`로 옮기고 `/aleph.json`에 `allowedRoutes` 추가).
+
+## 12단계 저장점: 탈환 작전실
+
+`aleph.config.json`의 `step`을 12로 올렸습니다. 아래 결과는 직접 돌린 연습이며 심판 판정이 아닙니다. 12단계 심판 제출은 아직 하지 않았습니다.
+
+| 바꾼 곳 | 내용 |
+| --- | --- |
+| `scripts/deployment-identity.mjs` | 허용 단계에 12를 더했습니다. 13은 거부합니다. |
+| `src/attack-check.mjs` | 12단계를 받습니다. 점검 한도가 20개라 새 항목을 늘리지 않고 `forged_device_approval`에 로그인 없는·가짜 토큰의 `GET /api/war-room` 요청을 합쳤습니다. 로그인한 작전실 요청은 보내지 않고 미실행으로 남습니다. |
+| `test/step12-savepoint.test.mjs` | 11단계 저장점 시험의 이름을 바꾸고 12단계 기대(`step` 12, 13 거부, 작전실 요청 포함)로 고쳤습니다. |
+
+- 판정기(`src/decider.mjs`)는 바꾸지 않았습니다. `RULE_IDS` 5개(`starter.deny`, `device_registered`, `step_up_required`, `own_notes_zone`, `instructor_notice_zone`)는 그대로입니다.
+- 확인(2026-10-14, 코딩 도구가 실행): `node --test "test/*.test.mjs"` 142개 통과, `test:package` 3개 통과, `decider:test`·`detect:test` 모두 「통과」, 가짜 Vercel 값으로 만든 빌드 식별이 `step` 12·허용 경로 5개·`restoreRoute`·`originalApiUrl`을 싣고 `step` 13은 거부.
+- 미실행: 배포본의 `/aleph.json`이 `step` 12로 바뀌었는지(푸시·배포 뒤 확인), `npm run bundle`, 12단계 심판 제출, 총공세 41종.
 
 ## 11단계 현재 상태: 나만의 접속 앱을 완성합니다
 
