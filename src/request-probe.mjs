@@ -18,7 +18,9 @@ export function describeRequest(request, resourceId = 'unknown') {
   const raw = typeof request?.url === 'string' ? request.url : '';
   const [pathPart, ...rest] = raw.split('?');
   const queryText = rest.join('?').split('#')[0];
-  const path = pathPart.split('#')[0].split('/').map((segment) => (ID_SEGMENT.test(segment) ? ':id' : segment)).join('/').slice(0, 80) || 'unknown';
+  // 경로는 허용 문자(영문·숫자·/·_·.·:·-) 밖의 글자를 ?로 바꿉니다. 따옴표·세미콜론·제어 문자가 기록에 그대로 들어가지 않게 합니다.
+  const path = pathPart.split('#')[0].split('/').map((segment) => (ID_SEGMENT.test(segment) ? ':id' : segment)).join('/')
+    .slice(0, 80).replace(/[^A-Za-z0-9/_.:-]/gu, '?') || 'unknown';
   const pairs = queryText ? queryText.split('&').filter(Boolean) : [];
   const queryKeys = pairs.map((pair) => decodeSafe(pair.split('=')[0])).filter((key) => /^[A-Za-z0-9_.-]{1,40}$/u.test(key));
   const attackPair = pairs.find((pair) => decodeSafe(pair.split('=')[0]) === 'attackId');

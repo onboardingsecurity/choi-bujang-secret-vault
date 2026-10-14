@@ -57,3 +57,14 @@ test('logRequestProbe는 서버 기록(console.log) 한 줄만 남긴다', () =>
   assert.equal(lines.length, 1);
   assert.match(lines[0], /^request_probe /u);
 });
+
+test('경로에서 허용 문자 밖의 글자(따옴표·세미콜론·제어 문자·퍼센트)는 ?로 바뀌고 정상 경로는 그대로다', () => {
+  const pathOf = (url) => describeRequest({ method: 'GET', url, headers: {} }).path;
+  assert.equal(pathOf('/api/x"; DROP;--'), '/api/x???DROP?--');
+  assert.equal(pathOf('/api/notes/\u0001\u0002'), '/api/notes/??');
+  assert.equal(pathOf('/api/notes/%0Aforged_line=1'), '/api/notes/?0Aforged_line?1');
+  assert.equal(pathOf('/api/notes'), '/api/notes');
+  assert.equal(pathOf('/api/notes/0f8fad5b-d9cb-469f-a165-70867728950e'), '/api/notes/:id');
+  assert.equal(pathOf('/api/device/status?attackId=x'), '/api/device/status');
+  for (const url of ['/a"b', '/a;b', '/a\u0000b', '/a\b', '/a b']) assert.match(pathOf(url), /^[A-Za-z0-9/_.:?-]+$/u, url);
+});
