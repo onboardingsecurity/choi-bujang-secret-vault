@@ -4,7 +4,7 @@ import config from '../aleph.config.json' with { type: 'json' };
 import { deploymentIdentity } from '../scripts/deployment-identity.mjs';
 import { RULE_IDS } from '../src/decider.mjs';
 import { createHash } from 'node:crypto';
-import { base64Url, redactSource, runAttackChecks, runtimeDiag, sourceDiag } from '../src/attack-check.mjs';
+import { base64Url, redactSource, runAttackChecks, packDiag, runtimeDiag } from '../src/attack-check.mjs';
 
 const env = {
   VERCEL_GIT_PROVIDER: 'github',
@@ -175,48 +175,54 @@ test('URL에 searchParams가 없어도 자기 점검이 끝까지 돌고 쿼리�
   }
 });
 
-// 임시 환경 진단: 점검 결과(20개)에는 섞이지 않고 GET 두 번으로만 나가며, 이름과 참/거짓만 안전한 글자로 담고, 실패해도 점검을 멈추지 않습니다.
-test('환경 진단은 GET 두 번뿐이고 점검 결과에 섞이지 않으며 실패해도 점검이 끝까지 돈다', async () => {
+// 11차: 심판의 fetch가 호스트로 넘기는 옵션은 alephEvidence뿐이라, 점검마다 다른 형식으로 싣고 형식 시험은 점검 결과에 섞이지 않게 보냅니다.
+const respondFor = (url) => {
+  const { pathname } = new URL(String(url));
+  if (pathname === '/api/config') return Response.json({ key: 'public-placeholder' });
+  if (pathname === '/manifest.webmanifest') return Response.json({ display: 'standalone', icons: [{ sizes: '192x192' }] });
+  if (pathname === '/') return new Response('createClient(u, k, { auth: { persistSession: false } });', { status: 200 });
+  if (pathname === '/data.json') return new Response(null, { status: 404 });
+  return new Response('{"error":"LOGIN_REQUIRED"}', { status: 401, headers: { 'x-resource-id': 'notes.own' } });
+};
+
+test('alephEvidence는 점검마다 정해진 형식으로 실리고, 형식 시험은 점검 결과에 섞이지 않으며, 호스트가 거부하면 없이 다시 보낸다', async () => {
   const realFetch = globalThis.fetch;
-  const diagRequests = [];
-  let failDiag = false;
-  const respond = (url) => {
-    const { pathname } = new URL(String(url));
-    if (pathname === '/api/config') return Response.json({ key: 'public-placeholder' }, { headers: { 'x-extra-record': 'abc' } });
-    if (pathname === '/manifest.webmanifest') return Response.json({ display: 'standalone', icons: [{ sizes: '192x192' }] });
-    if (pathname === '/') return new Response('createClient(u, k, { auth: { persistSession: false } });', { status: 200 });
-    if (pathname === '/data.json') return new Response(null, { status: 404 });
-    return new Response('{"error":"LOGIN_REQUIRED"}', { status: 401, headers: { 'x-resource-id': 'notes.own' } });
-  };
+  const calls = [];
+  let rejectObjects = false;
   globalThis.fetch = async (url, init = {}) => {
-    if (init.attackId === 'diag_env') {
-      diagRequests.push({ method: init.method, url: String(url), diag: init.headers?.['x-diag-env'], src: init.headers?.['x-diag-src'] });
-      if (failDiag) throw new Error('진단 요청 실패 모의');
-    }
-    return respond(url);
+    calls.push({ attackId: init.attackId, evidence: init.alephEvidence, method: init.method, src: init.headers?.['x-diag-src'] });
+    if (rejectObjects && init.alephEvidence !== undefined && typeof init.alephEvidence === 'object') throw new Error('alephEvidence 형식 거부 모의');
+    return respondFor(url);
   };
   try {
     const results = await runAttackChecks({ ...config, publicAppUrl: 'https://student-defense.vercel.app/' });
     assert.equal(results.length, 20);
     assert.ok(results.every((item) => item.attackId !== 'diag_env'));
-    const srcRequests = diagRequests.filter((item) => item.src);
-    assert.ok(srcRequests.length >= 1 && srcRequests.length <= 3);
-    assert.ok(srcRequests.every((item) => /^[1-3].[1-3].[A-Za-z0-9_-]+$/u.test(item.src)));
-    diagRequests.splice(0, diagRequests.length, ...diagRequests.filter((item) => !item.src));
-    assert.equal(diagRequests.length, 2);
-    assert.ok(diagRequests.every((item) => item.method === 'GET' && /\/api\/config\?attackId=diag_env$/u.test(item.url)));
-    assert.equal(diagRequests[0].diag, undefined);
-    const diag = diagRequests[1].diag;
-    assert.match(diag, /^node=[^;]*;fetch\.native=[01x];fetch\.name=/u);
-    for (const key of ['resp.ctor=', 'resp.hdr=', 'url.proto=', 'has=', 'globals=']) assert.ok(diag.includes(key), key);
-    assert.ok(diag.includes('x-extra-record'), '응답 헤더 이름이 담김');
-    assert.match(diag, /^[A-Za-z0-9_$.,;=:?-]+$/u);
-    assert.ok(diag.length <= 4000);
-    assert.ok(!/authorization|cookie|token|secret|password/iu.test(diag.replace(/fetch\.native/gu, '')));
-    diagRequests.length = 0;
-    failDiag = true;
+    assert.ok(calls.every((call) => call.method === 'GET'));
+    const evidenceOf = (id) => calls.find((call) => call.attackId === id && call.evidence !== undefined)?.evidence;
+    assert.equal(evidenceOf('static_data_json'), 'static_data_json');
+    assert.deepEqual(evidenceOf('anonymous_list'), { attackId: 'anonymous_list' });
+    const request = evidenceOf('anonymous_read_one');
+    assert.equal(request.attackId, 'anonymous_read_one');
+    assert.match(request.requestId, /^[0-9a-f-]{36}$/u);
+    assert.deepEqual(evidenceOf('fake_token_list'), { id: 'fake_token_list' });
+    // 형식 시험: 여섯 가지 값을 보낸 뒤 결과 글을 base64url 조각으로 서버 기록용 헤더에 싣습니다.
+    const forms = calls.filter((call) => call.attackId === 'diag_env' && call.evidence !== undefined);
+    assert.deepEqual(forms.map((call) => call.evidence), ['diag_env', { attackId: 'diag_env' }, 1, {}, { unknownKey: 1 }, ['diag_env']]);
+    const chunks = calls.filter((call) => call.src);
+    assert.ok(chunks.length >= 1 && chunks.length <= 3);
+    assert.ok(chunks.every((call) => /^[1-3]\.[1-3]\.[A-Za-z0-9_-]+$/u.test(call.src)));
+    const text = Buffer.from(chunks[0].src.split('.')[2].replace(/-/gu, '+').replace(/_/gu, '/'), 'base64').toString('utf8');
+    assert.match(text, /str=ok200/u);
+
+    calls.length = 0;
+    rejectObjects = true;
     const again = await runAttackChecks({ ...config, publicAppUrl: 'https://student-defense.vercel.app/' });
-    assert.equal(again.length, 20);
+    assert.equal(again.length, 20, '호스트가 형식을 거부해도 점검은 끝까지 돈다');
+    assert.ok(calls.some((call) => call.attackId === 'anonymous_list' && call.evidence === undefined), '거부되면 evidence 없이 다시 보냄');
+    const note = Buffer.from(calls.find((call) => call.src).src.split('.')[2].replace(/-/gu, '+').replace(/_/gu, '/'), 'base64').toString('utf8');
+    assert.match(note, /anonymous_list:object:.*거부 모의/u);
+    assert.match(note, /obj=.*거부 모의/u);
   } finally {
     globalThis.fetch = realFetch;
   }
@@ -253,7 +259,7 @@ test('환경 진단의 응답 헤더 탐색은 값이 있는 후보만 안전한
 });
 
 // 10차: 점검 환경의 fetch·응답 함수 소스를 가려서 남기는 진단(학생 승인). 비밀처럼 보이는 것은 가리고, 글자는 base64url만 씁니다.
-test('소스 진단은 토큰·긴 문자열·쿼리 값을 가리고, base64url로 되돌릴 수 있으며, 조각은 3개까지다', () => {
+test('진단 글은 토큰·긴 문자열·쿼리 값을 가리고, base64url로 되돌릴 수 있으며, 조각은 3개까지다', () => {
   const secretLike = 'Bearer abc.def.ghi eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.sig token="' + 'a'.repeat(50) + '" k=' + ['sk', 'live', '1234567890abcdefghij1234'].join('_') + ' url?x=hunter2&y=z';
   const redacted = redactSource('function f(a) { return record(a.attackId, "' + 'b'.repeat(60) + '") ' + secretLike + ' }');
   for (const leak of ['abc.def.ghi', 'eyJhbGci', 'aaaaaaaa', 'bbbbbbbb', ['sk', 'live', '1234567890'].join('_'), 'hunter2']) assert.ok(!redacted.includes(leak), leak);
@@ -261,15 +267,11 @@ test('소스 진단은 토큰·긴 문자열·쿼리 값을 가리고, base64url
   const sample = 'function (a, b) { return 한글 ~ ok; }';
   const encoded = base64Url(sample);
   assert.match(encoded, /^[A-Za-z0-9_-]+$/u);
-  const decoded = Buffer.from(encoded.replace(/-/gu, '+').replace(/_/gu, '/'), 'base64').toString('latin1');
-  assert.equal(decoded, sample.replace(/한글/u, '??'));
-  const long = { text() { return ('x'.repeat(40) + ' ').repeat(0); }, json: function jsonFn() { return 'j'.repeat(30); }, headers: { get() { return 1; } } };
-  const chunks = sourceDiag(long);
-  assert.ok(chunks.length >= 1 && chunks.length <= 3);
-  assert.ok(chunks.every((chunk) => /^[1-3].[1-3].[A-Za-z0-9_-]{1,3200}$/u.test(chunk)));
-  const huge = { text: new Function('return "' + 'q '.repeat(9000) + '"'), headers: { get() {} } };
-  Object.defineProperty(huge.text, 'toString', { value: () => 'function(){' + 'a b '.repeat(5000) + '}' });
-  assert.ok(sourceDiag(huge).length <= 3);
-  assert.doesNotThrow(() => sourceDiag(undefined));
-  assert.doesNotThrow(() => sourceDiag({ get text() { throw new Error('금지'); } }));
+  const decoded = Buffer.from(encoded.replace(/-/gu, '+').replace(/_/gu, '/'), 'base64').toString('utf8');
+  assert.equal(decoded, sample);
+  const chunks = packDiag('fetch=async (url) => { return 1; }');
+  assert.equal(chunks.length, 1);
+  assert.match(chunks[0], /^1\.1\.[A-Za-z0-9_-]+$/u);
+  assert.ok(packDiag('a b '.repeat(5000)).length <= 3);
+  assert.deepEqual(packDiag(''), []);
 });

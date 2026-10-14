@@ -11,6 +11,14 @@ import { createHash, randomUUID } from 'node:crypto';
 // 증거를 찾아 기록과 맞추는 경우를 위한 것이며, 심판이 읽는 방식을 아는 것이 아니라 추정입니다.
 // Supabase 직접 읽기에는 쿼리를 붙이지 않습니다(모르는 쿼리를 열 필터로 읽어 400이 나와 시험 결과가 달라짐).
 // 다른 점검의 응답을 빌려 쓰지 않고, 요청을 보내지 않은 점검은 not_run 또는 미실행으로 적습니다.
+// alephEvidence 형식 후보(11차 시험): 점검마다 하나씩 달리 보내, 어느 형식이 기록에 잡히는지 지목 목록으로 가립니다.
+const EVIDENCE_FORMS = {
+  static_data_json: 'string', anon_data_api_read: 'string', anonymous_list: 'object', resource_id_header: 'object',
+  anonymous_read_one: 'request', app_install_not_trusted: 'request', fake_token_list: 'id', forged_device_approval: 'id',
+};
+const evidenceOf = (form, attackId, requestId) => ({
+  string: attackId, object: { attackId }, request: { attackId, requestId }, id: { id: attackId },
+})[form];
 const attackHeaders = (attackId, requestId) => ({ 'x-attack-id': attackId, 'x-aleph-attack-id': attackId, 'x-request-id': requestId });
 const shaOf = (text) => {
   try { return createHash('sha256').update(String(text ?? '')).digest('hex'); } catch { return ''; }
@@ -78,10 +86,8 @@ export function runtimeDiag(response) {
   ].join(';').replace(/[^A-Za-z0-9_$.,;=:-]/gu, '?').slice(0, 4000);
 }
 
-// 10차 임시 진단(학생이 승인): 점검 환경이 주입한 fetch와 응답의 text·json·headers.get 함수의 소스 글을 가려서 남깁니다.
-// 심판이 요청과 attackId를 잇는 방법을 소스에서 찾기 위한 것입니다. 소스 글은 길이 제한 안에서 자르고, 토큰·긴 문자열·긴 영숫자 덩어리·
-// 쿼리 값을 <…>로 가린 뒤 base64url로 담아 헤더 안전 글자만 쓰며(값은 서버 기록을 내가 디코딩해 읽음), 실패하면 그 함수만 x로 적습니다.
-const SOURCE_LIMIT = 1500;
+// 10차 진단 결과: 심판의 fetch는 (url, {method, headers, body, alephEvidence})만 호스트로 넘기고 나머지 옵션은 버립니다.
+// 11차는 alephEvidence 옵션의 형식을 알아내려는 진단입니다. 호스트가 던진 오류 글은 가린 뒤(redactSource) base64url 조각으로 서버 기록에 남깁니다.
 const CHUNK_SIZE = 1800;
 const CHUNK_MAX = 3;
 const BASE64_URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -94,7 +100,10 @@ export const redactSource = (text) => String(text)
   .replace(/[A-Za-z0-9_+/=-]{24,}/gu, (run) => (/\d/u.test(run) ? '<long>' : run))
   .replace(/([?&][A-Za-z0-9_.-]+=)[^&\s"'`)]+/gu, '$1<v>');
 export const base64Url = (text) => {
-  const bytes = [...String(text)].map((ch) => { const code = ch.codePointAt(0); return code < 128 ? code : 63; });
+  // UTF-8 바이트로 바꿉니다(TextEncoder·Buffer가 없는 환경이라 encodeURIComponent·unescape로). 짝 없는 서로게이트는 ?로 바꿉니다.
+  let binary;
+  try { binary = unescape(encodeURIComponent(String(text))); } catch { binary = String(text).replace(/[^ -]/gu, '?'); }
+  const bytes = [...binary].map((ch) => ch.charCodeAt(0) & 255);
   let out = '';
   for (let i = 0; i < bytes.length; i += 3) {
     const [a, b, c] = [bytes[i], bytes[i + 1], bytes[i + 2]];
@@ -104,11 +113,8 @@ export const base64Url = (text) => {
   }
   return out;
 };
-export function sourceDiag(response) {
-  const read = (label, pick) => {
-    try { return `${label}=${redactSource(Function.prototype.toString.call(pick())).slice(0, SOURCE_LIMIT)}`; } catch { return `${label}=x`; }
-  };
-  const joined = [read('fetch', () => globalThis.fetch), read('text', () => response.text), read('json', () => response.json), read('get', () => response.headers.get)].join(' | ');
+export function packDiag(text) {
+  const joined = String(text).slice(0, CHUNK_SIZE * CHUNK_MAX);
   const chunks = [];
   for (let i = 0; i < joined.length && chunks.length < CHUNK_MAX; i += CHUNK_SIZE) chunks.push(joined.slice(i, i + CHUNK_SIZE));
   return chunks.map((chunk, index) => `${index + 1}.${chunks.length}.${base64Url(chunk)}`);
@@ -129,6 +135,7 @@ export async function runAttackChecks(config) {
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
   // GET 요청 하나를 attackId 표시·요청 ID와 함께 보내고 응답 본문(text)을 한 번만 읽어 해시까지 만듭니다. 격리 환경 규칙에 따라 GET만 씁니다.
   // 심판 환경의 응답은 Response가 아닌 일반 객체(headers.get·json·ok·status·text뿐)라서 본문은 text()로만 읽고 직접 해석합니다.
+  const evidenceNotes = [];
   const probe = async (attackId, target, extra = {}) => {
     const requestId = randomUUID();
     const url = new URL(target, app);
@@ -138,10 +145,19 @@ export async function runAttackChecks(config) {
     let href = url.href;
     if (config.step >= 3 && url.origin === app.origin) href += `${href.includes('?') ? '&' : '?'}attackId=${encodeURIComponent(attackId)}`;
     // attackId는 fetch 옵션에도 넣습니다(기본 fetch는 모르는 옵션을 무시하고, 요청을 기록하는 쪽이 읽을 수 있음).
-    const response = await fetch(href, {
+    const init = {
       method: 'GET', redirect: 'error', signal: AbortSignal.timeout(10000), attackId,
       headers: { ...attackHeaders(attackId, requestId), ...extra },
-    });
+    };
+    // 심판의 fetch가 호스트로 넘기는 옵션은 alephEvidence뿐이라(10차 진단), 점검마다 다른 형식으로 시험합니다. 호스트가 거부하면 없이 다시 보냅니다.
+    const form = EVIDENCE_FORMS[attackId];
+    let response;
+    if (form) {
+      try { response = await fetch(href, { ...init, alephEvidence: evidenceOf(form, attackId, requestId) }); } catch (error) {
+        evidenceNotes.push(`${attackId}:${form}:${redactSource(String(error?.message ?? error)).slice(0, 150)}`);
+      }
+    }
+    if (!response) response = await fetch(href, init);
     let text = '';
     try { text = await response.text(); } catch { /* 본문을 읽지 못해도 상태와 헤더는 쓸 수 있음 */ }
     return { response, requestId, shownUrl, status: response.status, text, sha: shaOf(text) };
@@ -291,12 +307,17 @@ export async function runAttackChecks(config) {
             observed: '미실행 (이 스크립트는 로그인 요청을 보내지 않음. 학생이 승인 전 화면에서 확인)' });
       }
       if (config.step >= 12) {
-        // 임시 진단: GET 두 번(응답을 받아 모양을 읽고, 그 모양을 헤더에 실어 한 번 더). 점검 결과(results)에는 넣지 않습니다.
+        // 임시 진단(11차): alephEvidence에 여러 형식을 실어 호스트가 받는지, 거부하면 어떤 오류 글을 주는지 기록합니다. 점검 결과(results)에는 넣지 않습니다.
         try {
-          const first = await probe('diag_env', '/api/config');
-          const text = runtimeDiag(first.response);
-          await probe('diag_env', '/api/config', { 'x-diag-env': text });
-          for (const chunk of sourceDiag(first.response)) await probe('diag_env', '/api/config', { 'x-diag-src': chunk });
+          const diagUrl = `${new URL('/api/config', app).href}?attackId=diag_env`;
+          const lines = [];
+          for (const [label, value] of [['str', 'diag_env'], ['obj', { attackId: 'diag_env' }], ['num', 1], ['empty', {}], ['unk', { unknownKey: 1 }], ['arr', ['diag_env']]]) {
+            try {
+              const reply = await fetch(diagUrl, { method: 'GET', attackId: 'diag_env', headers: attackHeaders('diag_env', randomUUID()), alephEvidence: value });
+              lines.push(`${label}=ok${reply.status}`);
+            } catch (error) { lines.push(`${label}=${redactSource(String(error?.message ?? error)).slice(0, 150)}`); }
+          }
+          for (const chunk of packDiag([...evidenceNotes, ...lines].join(' | '))) await probe('diag_env', '/api/config', { 'x-diag-src': chunk });
         } catch { /* 진단 실패는 제출 묶음 생성에 영향을 주지 않음 */ }
       }
       return results;
