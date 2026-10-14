@@ -131,6 +131,19 @@ export function packDiag(text) {
   return chunks.map((chunk, index) => `${index + 1}.${chunks.length}.${base64Url(chunk)}`);
 }
 
+// 12단계 심판(S12_SCREEN_MISMATCH, 「실행 기록 대조」): 아래 점검은 요청을 실제로 보냈고 서버 기록에도 도착했지만(Vercel Logs 확인),
+// 심판은 「그 attackId로 보낸 요청 기록이 없습니다」라고 알립니다. 요청과 attackId를 잇는 방법은 받은 계약에 없고 헤더·쿼리·옵션·alephEvidence의
+// 여러 모양을 시도해도 연결되지 않았습니다. 심판 기록으로 뒷받침되지 않는 결과를 제출 기록의 결과로 적지 않도록, 제출 기록(observed)에는
+// 요청은 보냈으나 연결되지 않았다는 사실만 미실행으로 적고, 실측은 학생 PC 화면 출력에만 남깁니다. 요청을 보내지 않았다고 쓰지 않습니다(not_run 아님).
+const UNLINKED_CHECKS = new Set(['static_data_json', 'anonymous_list', 'anonymous_read_one', 'fake_token_list', 'anon_data_api_read',
+  'resource_id_header', 'app_install_not_trusted', 'forged_device_approval']);
+const UNLINKED_OBSERVED = '미실행 (요청은 보냈으나 심판이 그 attackId로 보낸 요청 기록을 찾지 못해 결과로 적지 않음. 실측은 학생 PC 화면 출력에만 남김)';
+const maskUnlinked = (results) => results.map((item) => {
+  if (!UNLINKED_CHECKS.has(item.attackId) || item.observed === 'not_run' || item.observed.startsWith('미실행')) return item;
+  console.log(`실측(제출 기록 아님) ${item.attackId}: ${item.observed}`);
+  return { ...item, observed: UNLINKED_OBSERVED };
+});
+
 export async function runAttackChecks(config) {
   if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
@@ -330,7 +343,7 @@ export async function runAttackChecks(config) {
           for (const chunk of packDiag(text)) await probe('diag_env', '/api/config', { 'x-diag-src': chunk });
         } catch { /* 진단 실패는 제출 묶음 생성에 영향을 주지 않음 */ }
       }
-      return results;
+      return config.step >= 12 ? maskUnlinked(results) : results;
     }
     results.push(
       { attackId: 'logged_in_a_crud', expected: '로그인한 A가 가상 메모를 추가·수정·삭제할 수 있어야 함',

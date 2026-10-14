@@ -34,6 +34,22 @@ test('RULE_IDS에는 구현한 규칙 이름만 있다(11·12단계는 판정기
   assert.deepEqual(RULE_IDS, ['starter.deny', 'device_registered', 'step_up_required', 'own_notes_zone', 'instructor_notice_zone']);
 });
 
+// 12단계 제출 기록은 심판 기록과 연결되지 않은 8건을 미실행으로 적고, 실측은 화면 출력(console.log)에만 남깁니다.
+// 시험은 그 출력을 모아 실측 observed를 읽고, 제출 기록(results)의 글과 따로 확인합니다.
+const ACTUAL_LINE = /^실측\(제출 기록 아님\) ([a-z0-9_.-]+): ([\s\S]*)$/u;
+async function runWithActual(overrides = {}) {
+  const logged = [];
+  const realLog = console.log;
+  console.log = (...args) => { logged.push(args.map(String).join(' ')); };
+  try {
+    const results = await runAttackChecks({ ...config, publicAppUrl: 'https://student-defense.vercel.app/', ...overrides });
+    const actual = Object.fromEntries(logged.map((line) => ACTUAL_LINE.exec(line)).filter(Boolean).map((match) => [match[1], match[2]]));
+    return { results, actual, observed: Object.fromEntries(results.map((item) => [item.attackId, actual[item.attackId] ?? item.observed])) };
+  } finally {
+    console.log = realLog;
+  }
+}
+
 // 가짜 fetch만 씁니다. 실제 배포 주소·Supabase에는 요청을 보내지 않습니다.
 test('12단계 자기 점검은 20개 안에서 모양이 맞고, GET만 보내며 결과를 적은 점검은 실행 기록과 맞는다', async () => {
   const realFetch = globalThis.fetch;
@@ -61,14 +77,24 @@ test('12단계 자기 점검은 20개 안에서 모양이 맞고, GET만 보내�
     return new Response('{"code":"42501"}', { status: 401 });
   };
   try {
-    const results = await runAttackChecks({ ...config, publicAppUrl: 'https://student-defense.vercel.app/' });
+    const { results, actual, observed: observedById } = await runWithActual();
     assert.equal(results.length, 20);
     assert.equal(new Set(results.map(item => item.attackId)).size, results.length);
+    // 제출 기록: 요청은 보냈으나 심판 기록과 연결되지 않은 8건은 사실대로 미실행입니다(요청을 보내지 않았다는 not_run이 아님).
+    const unlinked = ['static_data_json', 'anonymous_list', 'anonymous_read_one', 'fake_token_list', 'anon_data_api_read',
+      'resource_id_header', 'app_install_not_trusted', 'forged_device_approval'];
+    assert.deepEqual(Object.keys(actual).sort(), [...unlinked].sort());
+    for (const item of results) {
+      if (!unlinked.includes(item.attackId)) continue;
+      assert.match(item.observed, /^미실행 \(요청은 보냈으나 심판이 그 attackId로 보낸 요청 기록을 찾지 못해 결과로 적지 않음/u, item.attackId);
+      assert.notEqual(item.observed, 'not_run');
+      assert.ok(!/HTTP \d{3}|GET /u.test(item.observed), '제출 기록에는 심판 기록이 뒷받침하지 못하는 결과를 적지 않음');
+    }
     for (const item of results) {
       assert.equal(Object.keys(item).sort().join(), 'attackId,expected,observed');
       assert.ok(item.observed.length <= 300 && item.expected.length <= 300, item.attackId);
     }
-    const byId = Object.fromEntries(results.map(item => [item.attackId, item.observed]));
+    const byId = observedById;
     assert.equal(byId.anonymous_write, 'not_run');
     const host = 'https://student-defense.vercel.app';
     const sha16 = (text) => createHash('sha256').update(text).digest('hex').slice(0, 16);
@@ -103,7 +129,8 @@ test('12단계 자기 점검은 20개 안에서 모양이 맞고, GET만 보내�
       assert.ok(record.attackId in byId || record.attackId === 'diag_env', `결과에 없는 attackId로 보낸 요청: ${record.attackId}`);
     }
     assert.equal(new Set(records.map((record) => record.requestId)).size, records.length);
-    for (const { attackId, observed } of results) {
+    for (const attackId of Object.keys(byId)) {
+      const observed = byId[attackId];
       const mine = records.filter((record) => record.attackId === attackId);
       if (observed === 'not_run' || observed.startsWith('미실행')) {
         assert.equal(mine.length, 0, `${attackId}: 미실행인데 요청 기록이 있음`);
@@ -137,8 +164,7 @@ test('첫 화면이 브라우저 저장소를 쓰면 자기 점검이 그대로 
     return new Response(null, { status: pathname === '/data.json' || pathname.startsWith('/api/notices') ? 404 : 401 });
   };
   try {
-    const byId = Object.fromEntries((await runAttackChecks({ ...config, publicAppUrl: 'https://student-defense.vercel.app/' }))
-      .map(item => [item.attackId, item.observed]));
+    const byId = (await runWithActual()).observed;
     assert.match(byId.app_install_not_trusted, /manifest\.webmanifest → HTTP 404 sha256:[0-9a-f]{8,16}.*GET https:\/\/student-defense\.vercel\.app\/ → HTTP 200, 브라우저 저장소 사용 있음, 로그인 세션 저장소 보관 가능 sha256:/u);
   } finally {
     globalThis.fetch = realFetch;
