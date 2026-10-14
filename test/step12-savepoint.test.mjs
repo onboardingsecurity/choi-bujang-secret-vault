@@ -93,7 +93,7 @@ test('12단계 자기 점검은 20개 안에서 모양이 맞고, GET만 보내�
       if (record.origin === 'https://student-defense.vercel.app') assert.equal(record.queryAttackId, record.attackId, record.attackId);
       else assert.equal(record.query, '', `${record.origin}에는 쿼리를 붙이지 않음`);
       assert.match(record.requestId ?? '', /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
-      assert.ok(record.attackId in byId, `결과에 없는 attackId로 보낸 요청: ${record.attackId}`);
+      assert.ok(record.attackId in byId || record.attackId === 'diag_env', `결과에 없는 attackId로 보낸 요청: ${record.attackId}`);
     }
     assert.equal(new Set(records.map((record) => record.requestId)).size, records.length);
     for (const { attackId, observed } of results) {
@@ -158,6 +158,49 @@ test('URL에 searchParams가 없어도 자기 점검이 끝까지 돌고 쿼리�
     assert.ok(urls.filter((url) => !url.startsWith('https://student-defense.vercel.app')).every((url) => !url.includes('?')));
   } finally {
     globalThis.URL = NativeURL;
+    globalThis.fetch = realFetch;
+  }
+});
+
+// 임시 환경 진단: 점검 결과(20개)에는 섞이지 않고 GET 두 번으로만 나가며, 이름과 참/거짓만 안전한 글자로 담고, 실패해도 점검을 멈추지 않습니다.
+test('환경 진단은 GET 두 번뿐이고 점검 결과에 섞이지 않으며 실패해도 점검이 끝까지 돈다', async () => {
+  const realFetch = globalThis.fetch;
+  const diagRequests = [];
+  let failDiag = false;
+  const respond = (url) => {
+    const { pathname } = new URL(String(url));
+    if (pathname === '/api/config') return Response.json({ key: 'public-placeholder' }, { headers: { 'x-extra-record': 'abc' } });
+    if (pathname === '/manifest.webmanifest') return Response.json({ display: 'standalone', icons: [{ sizes: '192x192' }] });
+    if (pathname === '/') return new Response('createClient(u, k, { auth: { persistSession: false } });', { status: 200 });
+    if (pathname === '/data.json') return new Response(null, { status: 404 });
+    return new Response('{"error":"LOGIN_REQUIRED"}', { status: 401, headers: { 'x-resource-id': 'notes.own' } });
+  };
+  globalThis.fetch = async (url, init = {}) => {
+    if (init.attackId === 'diag_env') {
+      diagRequests.push({ method: init.method, url: String(url), diag: init.headers?.['x-diag-env'] });
+      if (failDiag) throw new Error('진단 요청 실패 모의');
+    }
+    return respond(url);
+  };
+  try {
+    const results = await runAttackChecks({ ...config, publicAppUrl: 'https://student-defense.vercel.app/' });
+    assert.equal(results.length, 20);
+    assert.ok(results.every((item) => item.attackId !== 'diag_env'));
+    assert.equal(diagRequests.length, 2);
+    assert.ok(diagRequests.every((item) => item.method === 'GET' && /\/api\/config\?attackId=diag_env$/u.test(item.url)));
+    assert.equal(diagRequests[0].diag, undefined);
+    const diag = diagRequests[1].diag;
+    assert.match(diag, /^node=[^;]*;fetch\.native=[01x];fetch\.name=/u);
+    for (const key of ['resp.ctor=', 'resp.hdr=', 'url.proto=', 'has=', 'globals=']) assert.ok(diag.includes(key), key);
+    assert.ok(diag.includes('x-extra-record'), '응답 헤더 이름이 담김');
+    assert.match(diag, /^[A-Za-z0-9_$.,;=:-]+$/u);
+    assert.ok(diag.length <= 3500);
+    assert.ok(!/authorization|cookie|token|secret|password/iu.test(diag.replace(/fetch\.native/gu, '')));
+    diagRequests.length = 0;
+    failDiag = true;
+    const again = await runAttackChecks({ ...config, publicAppUrl: 'https://student-defense.vercel.app/' });
+    assert.equal(again.length, 20);
+  } finally {
     globalThis.fetch = realFetch;
   }
 });

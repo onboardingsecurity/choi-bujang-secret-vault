@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { describeRequest, logRequestProbe, probeLine } from '../src/request-probe.mjs';
+import { describeRequest, diagLine, logRequestProbe, probeLine } from '../src/request-probe.mjs';
 
 const secretBearer = `Bearer ${'a'.repeat(20)}.${'b'.repeat(20)}.${'c'.repeat(20)}`;
 const request = {
@@ -67,4 +67,19 @@ test('경로에서 허용 문자 밖의 글자(따옴표·세미콜론·제어 �
   assert.equal(pathOf('/api/notes/0f8fad5b-d9cb-469f-a165-70867728950e'), '/api/notes/:id');
   assert.equal(pathOf('/api/device/status?attackId=x'), '/api/device/status');
   for (const url of ['/a"b', '/a;b', '/a\u0000b', '/a\b', '/a b']) assert.match(pathOf(url), /^[A-Za-z0-9/_.:?-]+$/u, url);
+});
+
+test('x-diag-env 헤더가 있으면 request_diag 줄을 따로 남기고, 허용 문자 밖은 ?로 바꾸며, 없으면 남기지 않는다', () => {
+  assert.equal(diagLine({ url: '/api/config', headers: {} }), '');
+  assert.equal(diagLine(undefined), '');
+  const line = diagLine({ url: '/api/config?attackId=diag_env', headers: { 'x-diag-env': 'fetch.native=0;globals=A,B;bad="x" y' } });
+  assert.equal(line, 'request_diag attack_query=diag_env diag=fetch.native=0;globals=A,B;bad=?x??y');
+  assert.ok(diagLine({ url: '/a', headers: { 'x-diag-env': 'a'.repeat(9000) } }).length < 3600);
+  const lines = [];
+  const original = console.log;
+  console.log = (...args) => lines.push(args.join(' '));
+  try { logRequestProbe({ method: 'GET', url: '/api/config?attackId=diag_env', headers: { 'x-diag-env': 'node=v1' } }, 'config.public'); } finally { console.log = original; }
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /^request_probe /u);
+  assert.match(lines[1], /^request_diag attack_query=diag_env diag=node=v1$/u);
 });

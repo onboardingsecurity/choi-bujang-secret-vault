@@ -11,6 +11,37 @@ import { randomUUID } from 'node:crypto';
 // 다른 점검의 응답을 빌려 쓰지 않고, 요청을 보내지 않은 점검은 not_run 또는 미실행으로 적습니다.
 const attackHeaders = (attackId, requestId) => ({ 'x-attack-id': attackId, 'x-aleph-attack-id': attackId, 'x-request-id': requestId });
 
+// 12단계 임시 진단(원인을 찾으면 지움): 점검이 도는 환경의 모양을 서버 기록(request_diag)으로 남깁니다.
+// 심판이 요청과 attackId를 잇는 방법이 받은 계약에 없어, 점검 환경이 응답이나 전역에 기록용 단서를 더하는지 이름만 확인합니다.
+// 읽는 것: 이름과 참/거짓뿐입니다. 값·함수 소스·환경변수·파일은 읽지 않고, 토큰·키·비밀번호 같은 이름은 뺍니다.
+// 어떤 부분이든 실패하면 그 칸만 x로 적고, 이 진단은 제출 묶음 생성을 멈추게 하지 않습니다.
+const DIAG_SECRET_NAME = /auth|cookie|token|key|secret|password|credential|signature/iu;
+const diagNames = (list) => [...new Set(list)].filter((name) => typeof name === 'string' && /^[A-Za-z0-9_$.-]{1,40}$/u.test(name)
+  && !DIAG_SECRET_NAME.test(name)).sort().join(',');
+export function runtimeDiag(response) {
+  const part = (key, read) => { try { return `${key}=${read()}`; } catch { return `${key}=x`; } };
+  const flag = (value) => (value ? 1 : 0);
+  const isNative = (fn) => Function.prototype.toString.call(fn).includes('[native code]');
+  const headerNames = () => {
+    try { return diagNames([...response.headers.keys()]); } catch { return diagNames(Object.keys(response.headers)); }
+  };
+  return [
+    part('node', () => String(globalThis.process?.version ?? 'none')),
+    part('fetch.native', () => flag(isNative(globalThis.fetch))),
+    part('fetch.name', () => String(globalThis.fetch.name || 'anon')),
+    part('fetch.len', () => globalThis.fetch.length),
+    part('resp.ctor', () => response?.constructor?.name),
+    part('resp.native', () => flag(response instanceof globalThis.Response)),
+    part('resp.type', () => response.type),
+    part('resp.hdr', headerNames),
+    part('url.native', () => flag(isNative(globalThis.URL))),
+    part('url.proto', () => diagNames(Object.getOwnPropertyNames(globalThis.URL.prototype))),
+    part('has', () => diagNames(['Headers', 'Request', 'Response', 'AbortSignal', 'AbortController', 'URLSearchParams', 'TextEncoder',
+      'structuredClone', 'queueMicrotask', 'setTimeout'].filter((name) => typeof globalThis[name] !== 'undefined'))),
+    part('globals', () => diagNames(Object.getOwnPropertyNames(globalThis))),
+  ].join(';').replace(/[^A-Za-z0-9_$.,;=:-]/gu, '?').slice(0, 3500);
+}
+
 export async function runAttackChecks(config) {
   if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
@@ -186,6 +217,15 @@ export async function runAttackChecks(config) {
             observed: `${observe(deviceSent)}; 가짜 토큰 POST /api/device/register → ${NOT_RUN}` },
           { attackId: 'unapproved_device_notes', expected: '로그인했어도 서버가 승인·확인하지 않은 기기의 메모 요청은 403으로 거부되고 메모가 보이지 않아야 함',
             observed: '미실행 (이 스크립트는 로그인 요청을 보내지 않음. 학생이 승인 전 화면에서 확인)' });
+      }
+      if (config.step >= 12) {
+        // 임시 진단: GET 두 번(응답을 받아 모양을 읽고, 그 모양을 헤더에 실어 한 번 더). 점검 결과(results)에는 넣지 않습니다.
+        try {
+          const first = await probe('diag_env', '/api/config');
+          const text = runtimeDiag(first.response);
+          try { await first.response.arrayBuffer(); } catch { /* 본문을 읽지 못해도 진단은 계속 */ }
+          await probe('diag_env', '/api/config', { 'x-diag-env': text });
+        } catch { /* 진단 실패는 제출 묶음 생성에 영향을 주지 않음 */ }
       }
       return results;
     }

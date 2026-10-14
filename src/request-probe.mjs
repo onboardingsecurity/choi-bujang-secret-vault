@@ -49,6 +49,17 @@ export const probeLine = (info) => {
   return parts.join(' ').slice(0, 900);
 };
 
+// 임시 진단: 점검이 도는 환경의 모양(이름·참/거짓)을 담아 오는 헤더를 별도 줄(request_diag)로 남깁니다.
+// 허용 문자(영문·숫자·_ $ . , ; = : -) 밖은 ?로 바꾸고 3500자까지만 씁니다.
+export function diagLine(request) {
+  const headers = request?.headers && typeof request.headers === 'object' ? request.headers : {};
+  const raw = Array.isArray(headers['x-diag-env']) ? headers['x-diag-env'][0] : headers['x-diag-env'];
+  if (typeof raw !== 'string' || !raw) return '';
+  const query = describeRequest(request).attackQuery || '-';
+  return `request_diag attack_query=${query} diag=${raw.slice(0, 3500).replace(/[^A-Za-z0-9_$.,;=:-]/gu, '?')}`;
+}
+
 export function logRequestProbe(request, resourceId) {
   try { console.log(probeLine(describeRequest(request, resourceId))); } catch {}
+  try { const line = diagLine(request); if (line) console.log(line); } catch {}
 }
