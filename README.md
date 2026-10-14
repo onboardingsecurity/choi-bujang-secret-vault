@@ -63,7 +63,7 @@
 | 탐지 연습 | `npm run detect:test` | 6줄 모두 「통과」 | 실행함 |
 | 배포본 요청 표 | `npm run recon:table` | 실제 API 줄이 모두 「기대와 일치」(일치 19, 다름 0), `artifacts/recon-table.md` 생성 | 실행함(로그인 없는 줄만) |
 | 로컬 가상 화면 | `npm run build -- --local` | 가상 화면만 확인. 서버 함수·로그인·패스키는 동작하지 않음 | 미실행 |
-| 제출 묶음 | `npm run bundle` | 단계 12, 규칙 5개, 직접 점검 20개(GET만 보내고 쓰기 점검은 `not_run`) | 학생이 `c4d4378`로 제출해 `S12_BUNDLE_UNSUPPORTED`. 수정본은 모의 격리 환경에서 끝까지 실행(코딩 도구), 재제출 전 |
+| 제출 묶음 | `npm run bundle` | 단계 12, 규칙 5개, 직접 점검 20개(GET만 보내고, 결과를 적은 점검에는 요청 ID, 보내지 않은 점검은 `not_run`·`미실행`) | 학생이 `c4d4378`로 제출해 `S12_BUNDLE_UNSUPPORTED`, `56fe6c2`로 제출해 `S12_SCREEN_MISMATCH`. 수정본은 모의 격리 환경의 실행 기록 대조에서 문제 없음(코딩 도구), 재제출 전 |
 
 - 판정기와 탐지 연습은 가상 요청이고 엔진의 실제 결과가 아닙니다. 통과해도 엔진의 사건 전달·접속 회수가 연결됐다는 뜻이 아닙니다.
 - 접속 앱 사용: 배포 주소를 열고 로그인 → 「이 기기 승인 요청」 → Supabase SQL Editor에서 `devices`의 그 행을 `approved`로 → 「승인된 이 기기로 확인」 → 자료실과 「탈환 작전실」이 열립니다(2026-10-14 새 Windows PC에서 학생이 실행). 패스키는 고정 배포 주소에만 묶여 로컬에서는 승인할 수 없습니다.
@@ -108,13 +108,22 @@
 
 | 단계 | 처음 낸 커밋 | 심판 결과 | 해결 커밋 | 재제출 결과 |
 | --- | --- | --- | --- | --- |
-| 12단계 | `c4d4378` | `S12_BUNDLE_UNSUPPORTED` | 아래 「S12_BUNDLE_UNSUPPORTED」의 수정 | 재제출 전 |
+| 12단계 | `c4d4378`, 2차 `56fe6c2` | `S12_BUNDLE_UNSUPPORTED`, 2차 `S12_SCREEN_MISMATCH` | `56fe6c2`(1차), 아래 「S12_SCREEN_MISMATCH」의 수정(2차) | 재제출 전 |
 | 11단계 | 기록 없음(코드의 마지막 변경은 `bfba3c6`이고 그 뒤 `0163a29`·`e518c51`·`5e52985`는 README만 바꿈) | 거부 없음 | 없음 | 통과(학생 보고, 제출한 커밋과 제출 횟수는 기록 없음) |
 | 10단계 | `f0db501`, 2차 `789b1c1` | `S10_BACKUP_UNVERIFIED` 두 번 | `50596ac`(README) | 통과(학생 보고, 재제출한 커밋은 기록 없음) |
 | 9단계 | `a06fe52` | `S09_NO_PROPOSAL` | `4d859b2` | 통과(학생 보고) |
 | 8단계 | `686a4bb` | `S08_OTHER_ZONE_ALLOWED` | `f3010d7` | 통과(학생 보고) |
 | 7단계 | `ba8b88f`, 2차 `59b4eab` | `S07_SAME_VERDICT` 두 번 | `10d569d` | 3차 통과(학생 보고) |
 | 5단계 | `e78d6db` | `S05_ORIGINAL_URL_MISSING` | `edb4aa4` | `e59b9b6`로 통과(학생 보고) |
+
+### S12_SCREEN_MISMATCH: 결과를 적은 점검의 요청이 실행 기록에서 그 attackId로 확인되지 않음
+
+- 심판 결과: 「무인증 조회와 타인 메모 조회를 같은 제출본에 연속 전송」의 조건 8개 중 「실행 기록 대조」 1개가 맞지 않았습니다. `static_data_json`, `anonymous_list`, `anonymous_read_one` 외 8건에 「그 attackId로 보낸 요청 기록이 없다」였고, 요청을 보내지 않은 점검은 observed를 `not_run`으로 적으라는 안내가 붙었습니다.
+- 원인: 지목된 11건은 두 종류였습니다. 실제로 GET을 보내고 결과를 적었지만 요청에 attackId 표시가 없던 8건(`resource_id_header`는 자기 요청 없이 `anonymous_list`의 응답을 빌려 씀)과, 요청을 보내지 않았는데 `확인 불가`로 적은 3건입니다. `not_run` 3건과 `미실행 (…)` 6건은 지목되지 않았습니다.
+- 해결(`src/attack-check.mjs`, `test/step12-savepoint.test.mjs`): 모든 요청에 attackId(`x-attack-id`, `x-aleph-attack-id`)와 새 요청 ID(`x-request-id`)를 싣고, 결과를 적은 점검의 observed 끝에 그 점검이 보낸 요청의 ID를 `[요청 ID …]`로 적습니다. 각 점검은 자기 요청만 보내고(`resource_id_header`도 따로 보냄), `확인 불가` 3건은 `미실행 (확인 불가: …)`으로 바꿨습니다. 점검 20개와 ID는 그대로이고 요청은 GET 12개입니다. 시험은 결과를 적은 점검마다 그 attackId의 요청이 있고 observed의 요청 ID가 그 요청들과 같은지, 미실행 점검에는 요청이 없는지 확인합니다.
+- 심판이 attackId를 어디서 읽는지는 받은 계약과 심판 메모에 없어, 헤더 이름은 추정입니다.
+- 재현(수정 전 → 후): 모의 격리 환경이 요청마다 attackId 헤더·요청 ID·응답 상태를 기록하고, 그 기록을 제출 묶음과 대조했습니다(코딩 도구가 실제 실행. 심판의 실제 환경은 아님). `56fe6c2`에서는 심판과 같은 11건이 같은 순서로 「요청 기록 없음」으로 나왔고, 수정본에서는 결과를 적은 8건 모두 요청 기록·요청 ID·상태가 맞았으며 미실행 12건은 요청이 0건이었습니다.
+- 한계: 헤더 이름이 심판이 읽는 이름과 다르면 같은 사유가 다시 나올 수 있습니다. 「타인 메모 조회」(`other_user_access`)는 로그인이 필요해 여전히 미실행입니다. 작전실 화면과 서버 기록 줄은 바꾸지 않았습니다(실패한 조건은 실행 기록 대조 하나).
 
 ### S12_BUNDLE_UNSUPPORTED: 제출 묶음이 격리 환경에서 끝까지 실행되지 않음
 
@@ -179,7 +188,7 @@
 | 바꾼 곳 | 내용 |
 | --- | --- |
 | `scripts/deployment-identity.mjs` | 허용 단계에 12를 더했습니다. 13은 거부합니다. |
-| `src/attack-check.mjs` | 12단계를 받습니다. 점검 한도가 20개라 새 항목을 늘리지 않고 `forged_device_approval`에 로그인 없는·가짜 토큰의 `GET /api/war-room` 요청을 합쳤습니다. 로그인한 작전실 요청은 보내지 않고 미실행으로 남습니다. `S12_BUNDLE_UNSUPPORTED` 뒤로는 GET만 보내고, 쓰기 요청이 필요한 점검은 `not_run`입니다(위 「심판 결과와 해결 기록」). |
+| `src/attack-check.mjs` | 12단계를 받습니다. 점검 한도가 20개라 새 항목을 늘리지 않고 `forged_device_approval`에 로그인 없는·가짜 토큰의 `GET /api/war-room` 요청을 합쳤습니다. 로그인한 작전실 요청은 보내지 않고 미실행으로 남습니다. `S12_BUNDLE_UNSUPPORTED` 뒤로는 GET만 보내고, 쓰기 요청이 필요한 점검은 `not_run`입니다. `S12_SCREEN_MISMATCH` 뒤로는 요청마다 attackId와 요청 ID를 싣고 observed에 그 요청 ID를 적습니다(위 「심판 결과와 해결 기록」). |
 | `test/step12-savepoint.test.mjs` | 11단계 저장점 시험의 이름을 바꾸고 12단계 기대(`step` 12, 13 거부, 작전실 요청 포함)로 고쳤습니다. |
 
 - 판정기(`src/decider.mjs`)는 바꾸지 않았습니다. `RULE_IDS` 5개(`starter.deny`, `device_registered`, `step_up_required`, `own_notes_zone`, `instructor_notice_zone`)는 그대로입니다.
