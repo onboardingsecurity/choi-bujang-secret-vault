@@ -37,8 +37,10 @@ export async function runAttackChecks(config) {
   if (config.step >= 3 && config.step <= 12) {
     // 3~12단계: 토큰 없는 요청과 가짜 토큰 요청만 실제로 보냅니다. 비밀번호는 이 파일에 넣지 않으므로
     // 로그인 상태의 추가·수정·삭제와 A/B 교차 접근은 여기서 보내지 않고 '미실행'으로 남깁니다.
+    // 12단계 심판(S12_BUNDLE_UNSUPPORTED): 제출 묶음은 공개 HTTPS 주소로 보내는 GET·HEAD만 되는 격리 환경에서 실행되므로
+    // 쓰기 요청(POST·PUT·DELETE)은 보내지 않고, 쓰기 요청이 필요한 점검은 observed를 not_run으로 둡니다.
+    const NOT_RUN = 'not_run';
     const probeId = '11111111-1111-4111-8111-111111111111';
-    const noteBody = JSON.stringify({ title: 'x', body: 'y' });
     const fakeToken = { authorization: 'Bearer aaa.bbb.ccc' };
     // 요청 하나를 보내고 상태·자원 ID·메모 노출 여부만 돌려줍니다. 응답 본문은 저장하지 않습니다.
     const send = async (method, path, body, extra = {}, label = '') => {
@@ -62,10 +64,8 @@ export async function runAttackChecks(config) {
       observed: staticRead.visible ? '정적 /data.json에서 메모가 아직 보임' : `정적 /data.json에서 메모가 보이지 않음 (HTTP ${staticRead.status})` }];
     const list = await send('GET', '/api/notes');
     results.push({ attackId: 'anonymous_list', expected: anonymous, observed: observe([list]) });
-    // 11단계: 제출 묶음의 점검은 20개까지라, 로그인 없는 메모 추가·수정·삭제 세 요청을 한 항목으로 묶어 모두 보냅니다.
-    const writes = [await send('POST', '/api/notes', noteBody), await send('PUT', `/api/notes/${probeId}`, noteBody),
-      await send('DELETE', `/api/notes/${probeId}`)];
-    results.push({ attackId: 'anonymous_write', expected: '로그인 없는 메모 추가·수정·삭제는 모두 거부(401)되고 메모가 보이지 않아야 함', observed: observe(writes) });
+    // 로그인 없는 메모 추가·수정·삭제는 쓰기 요청이라 보내지 않습니다(not_run).
+    results.push({ attackId: 'anonymous_write', expected: '로그인 없는 메모 추가·수정·삭제는 모두 거부(401)되고 메모가 보이지 않아야 함', observed: NOT_RUN });
     results.push({ attackId: 'anonymous_read_one', expected: anonymous, observed: observe([await send('GET', `/api/notes/${probeId}`)]) });
     results.push({ attackId: 'fake_token_list', expected: anonymous, observed: observe([await send('GET', '/api/notes', undefined, fakeToken)]) });
     if (config.step >= 4) {
@@ -103,17 +103,12 @@ export async function runAttackChecks(config) {
           observed: '확인 불가 (제공 엔진 환경이 주어지지 않아 실측하지 않음. 로컬 연습은 npm run decider:test)' });
       }
       if (config.step >= 8) {
-        // 8단계: 비로그인 요청에도 서버가 정한 자원 ID가 응답 헤더에 붙는지, 없는 공지 주소에 수정 요청을 보내면 어떻게 되는지만 실제로 보냅니다.
+        // 8단계: 비로그인 요청에도 서버가 정한 자원 ID가 응답 헤더에 붙는지만 실제로 봅니다. 공지 수정(PUT)은 쓰기 요청이라 보내지 않습니다(not_run).
         // 로그인한 B가 A의 메모를 직접 요청하는 시험은 위 other_user_access와 같은 이유로 보내지 않습니다.
-        const notice = await fetch(new URL(`/api/notices/${probeId}`, app), {
-          method: 'PUT', redirect: 'error', signal: AbortSignal.timeout(10000),
-          headers: { 'content-type': 'application/json' }, body: noteBody,
-        });
         results.push(
           { attackId: 'resource_id_header', expected: '내 메모 API의 응답에는 서버가 정한 자원 ID(notes.own)가 붙어야 함',
             observed: `GET /api/notes → X-Resource-Id ${list.resourceId ?? '없음'}` },
-          { attackId: 'instructor_notice_edit', expected: '비로그인의 강사 공지 수정은 거부되어야 함',
-            observed: `PUT /api/notices/:id → HTTP ${notice.status} (공지 주소가 없음. 로그인한 일반 학생의 요청은 미실행)` },
+          { attackId: 'instructor_notice_edit', expected: '비로그인의 강사 공지 수정은 거부되어야 함', observed: NOT_RUN },
           { attackId: 'decider_zone_rules', expected: '일반 학생의 공지 수정과 알 수 없는 경로는 판정기가 거부해야 함',
             observed: '확인 불가 (반 엔진이 부르는 판정기 안의 규칙이라 요청으로 시험할 수 없음. 로컬 연습은 node --test test/decider-zones.test.mjs)' });
       }
@@ -123,20 +118,15 @@ export async function runAttackChecks(config) {
           observed: '확인 불가 (실제 회수와 경과 시간은 심판이 가상 사건으로 확인함. 로컬 연습은 node --test test/detect-input.test.mjs)' });
       }
       if (config.step >= 10) {
-        // 10단계: 복원 경로에 토큰 없는 요청과 가짜 토큰 요청만 실제로 보냅니다. 복원은 로그인한 사본 소유자만 할 수 있어서
-        // 로그인한 다른 계정의 요청은 이 스크립트가 보내지 않고 '미실행'으로 남깁니다. 사본을 바꾸는 요청은 보내지 않습니다.
-        // 11단계부터 토큰 없는 요청과 가짜 토큰 요청을 한 항목(restore_without_login)으로 묶어 둘 다 보냅니다.
-        const restorePath = typeof config.restoreRoute === 'string' && config.restoreRoute.startsWith('POST /') ? config.restoreRoute.slice(5) : null;
-        const restoreBody = JSON.stringify({ id: probeId, title: 'x', body: 'y' });
-        const expected = '로그인 없이·가짜 토큰으로는 복원 경로가 거부(401)되고 메모가 보이지 않아야 함';
-        results.push({ attackId: 'restore_without_login', expected, observed: restorePath
-          ? observe([await send('POST', restorePath, restoreBody), await send('POST', restorePath, restoreBody, fakeToken, '가짜 토큰 ')])
-          : '미실행 (aleph.config.json에 restoreRoute가 없음)' });
+        // 10단계: 복원 경로(POST)는 쓰기 요청이라 토큰 없는 요청과 가짜 토큰 요청도 보내지 않습니다(not_run).
+        // 복원은 로그인한 사본 소유자만 할 수 있어서 로그인한 다른 계정의 요청도 이 스크립트가 보내지 않고 '미실행'으로 남깁니다.
+        results.push({ attackId: 'restore_without_login', expected: '로그인 없이·가짜 토큰으로는 복원 경로가 거부(401)되고 메모가 보이지 않아야 함', observed: NOT_RUN });
         results.push({ attackId: 'restore_other_user', expected: '사본 소유자가 아닌 로그인 계정의 복원 요청은 404로 거부되고 다른 메모는 그대로여야 함',
           observed: '미실행 (이 스크립트는 로그인 요청을 보내지 않음. 학생이 A 시크릿 창에서 직접 확인)' });
       }
       if (config.step >= 11) {
-        // 11단계: 설치용 manifest와 첫 화면 원본을 읽고, 기기 승인 API에는 토큰 없는 요청과 승인된 척하는 가짜 토큰 요청만 보냅니다.
+        // 11단계: 설치용 manifest와 첫 화면 원본을 읽고, 기기 승인 API에는 토큰 없는 상태 조회(GET)만 보냅니다.
+        // 승인된 척하는 가짜 토큰 등록(POST)은 쓰기 요청이라 보내지 않고 not_run으로 적습니다.
         // 로그인한 계정의 승인 전·후 요청은 이 스크립트가 보내지 않으므로 '미실행'으로 남깁니다.
         let manifestLine;
         try {
@@ -156,7 +146,6 @@ export async function runAttackChecks(config) {
         } catch {
           pageLine = 'GET / → 요청 실패';
         }
-        const forged = JSON.stringify({ label: 'x', credential: {}, status: 'approved' });
         // 12단계: 점검이 20개까지라 새 항목을 늘리지 않고, 탈환 작전실(GET /api/war-room)의 토큰 없는 요청과 가짜 토큰 요청을 이 항목에 합칩니다.
         const warRoom = config.step >= 12
           ? [await send('GET', '/api/war-room'), await send('GET', '/api/war-room', undefined, fakeToken, '가짜 토큰 ')]
@@ -165,7 +154,7 @@ export async function runAttackChecks(config) {
           { attackId: 'app_install_not_trusted', expected: '설치용 manifest가 있어도 설치 표시만으로 기기가 승인되지 않고, 로그인 토큰·기기 키를 브라우저 저장소에 두지 않아야 함',
             observed: `${manifestLine}; ${pageLine}` },
           { attackId: 'forged_device_approval', expected: `로그인 없는 기기 상태 조회와 승인된 척하는 가짜 토큰 등록 요청${config.step >= 12 ? ', 로그인 없는·가짜 토큰의 작전실 요약 요청' : ''}은 거부(401)되어야 함`,
-            observed: observe([await send('GET', '/api/device/status'), await send('POST', '/api/device/register', forged, fakeToken, '가짜 토큰 '), ...warRoom]) },
+            observed: `${observe([await send('GET', '/api/device/status'), ...warRoom])}; 가짜 토큰 POST /api/device/register → ${NOT_RUN}` },
           { attackId: 'unapproved_device_notes', expected: '로그인했어도 서버가 승인·확인하지 않은 기기의 메모 요청은 403으로 거부되고 메모가 보이지 않아야 함',
             observed: '미실행 (이 스크립트는 로그인 요청을 보내지 않음. 학생이 승인 전 화면에서 확인)' });
       }

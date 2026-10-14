@@ -34,7 +34,7 @@ test('RULE_IDS에는 구현한 규칙 이름만 있다(11·12단계는 판정기
 });
 
 // 가짜 fetch만 씁니다. 실제 배포 주소·Supabase에는 요청을 보내지 않습니다.
-test('12단계 자기 점검은 20개 안에서 모양이 맞고, 보내지 않은 점검은 미실행·확인 불가로 남는다', async () => {
+test('12단계 자기 점검은 20개 안에서 모양이 맞고, GET만 보내며 쓰기 요청이 필요한 점검은 not_run으로 남는다', async () => {
   const realFetch = globalThis.fetch;
   const sent = [];
   const denied = () => new Response('{"error":"LOGIN_REQUIRED"}', { status: 401, headers: { 'x-resource-id': 'notes.own' } });
@@ -64,23 +64,23 @@ test('12단계 자기 점검은 20개 안에서 모양이 맞고, 보내지 않�
       assert.ok(item.observed.length <= 300 && item.expected.length <= 300, item.attackId);
     }
     const byId = Object.fromEntries(results.map(item => [item.attackId, item.observed]));
-    assert.match(byId.anonymous_write, /^POST \/api\/notes → HTTP 401, PUT \/api\/notes\/:id → HTTP 401, DELETE \/api\/notes\/:id → HTTP 401, 메모 내용 없음$/u);
+    assert.equal(byId.anonymous_write, 'not_run');
     assert.match(byId.anonymous_list, /GET \/api\/notes → HTTP 401, 메모 내용 없음/u);
     assert.match(byId.resource_id_header, /notes\.own/u);
-    assert.match(byId.instructor_notice_edit, /HTTP 404/u);
+    assert.equal(byId.instructor_notice_edit, 'not_run');
     assert.match(byId.decider_zone_rules, /^확인 불가/u);
     assert.match(byId.detect_compound_revocation, /^확인 불가/u);
     assert.match(byId.unusual_access_step_up, /^확인 불가/u);
     for (const id of ['logged_in_a_crud', 'other_user_access', 'owner_change', 'unregistered_device', 'restore_other_user', 'unapproved_device_notes']) {
       assert.match(byId[id], /^미실행/u, id);
     }
-    assert.match(byId.restore_without_login, /^POST \/api\/restore\/note → HTTP 401, 가짜 토큰 POST \/api\/restore\/note → HTTP 401, 메모 내용 없음$/u);
+    assert.equal(byId.restore_without_login, 'not_run');
     assert.match(byId.app_install_not_trusted, /manifest\.webmanifest → HTTP 200 \(standalone, 아이콘 192x192·512x512\)/u);
     assert.match(byId.app_install_not_trusted, /브라우저 저장소 사용 없음, 로그인 세션 메모리 보관/u);
-    assert.match(byId.forged_device_approval, /^GET \/api\/device\/status → HTTP 401, 가짜 토큰 POST \/api\/device\/register → HTTP 401, GET \/api\/war-room → HTTP 401, 가짜 토큰 GET \/api\/war-room → HTTP 401, 메모 내용 없음$/u);
+    assert.match(byId.forged_device_approval, /^GET \/api\/device\/status → HTTP 401, GET \/api\/war-room → HTTP 401, 가짜 토큰 GET \/api\/war-room → HTTP 401, 메모 내용 없음; 가짜 토큰 POST \/api\/device\/register → not_run$/u);
     assert.ok(sent.includes('GET https://student-defense.vercel.app/api/war-room'));
-    assert.ok(sent.includes('POST https://student-defense.vercel.app/api/restore/note'));
-    assert.ok(sent.includes('POST https://student-defense.vercel.app/api/device/register'));
+    // 격리 환경 규칙: 공개 HTTPS 주소로 보내는 GET·HEAD만 보냅니다.
+    assert.ok(sent.every(line => /^(GET|HEAD) https:\/\//u.test(line)), sent.join('\n'));
     // 로그인한 계정으로 보낸 요청이 없어야 합니다: 가짜 토큰 요청 말고는 Authorization을 쓰지 않습니다.
     assert.ok(sent.every(line => /student-defense\.vercel\.app|supabase\.co/u.test(line)));
   } finally {

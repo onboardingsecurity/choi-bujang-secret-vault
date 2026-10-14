@@ -63,7 +63,7 @@
 | 탐지 연습 | `npm run detect:test` | 6줄 모두 「통과」 | 실행함 |
 | 배포본 요청 표 | `npm run recon:table` | 실제 API 줄이 모두 「기대와 일치」(일치 19, 다름 0), `artifacts/recon-table.md` 생성 | 실행함(로그인 없는 줄만) |
 | 로컬 가상 화면 | `npm run build -- --local` | 가상 화면만 확인. 서버 함수·로그인·패스키는 동작하지 않음 | 미실행 |
-| 제출 묶음 | `npm run bundle` | 단계 12, 규칙 5개, 자기 점검 결과 | 배포 확인 뒤 학생이 실행(미실행) |
+| 제출 묶음 | `npm run bundle` | 단계 12, 규칙 5개, 직접 점검 20개(GET만 보내고 쓰기 점검은 `not_run`) | 학생이 `c4d4378`로 제출해 `S12_BUNDLE_UNSUPPORTED`. 수정본은 모의 격리 환경에서 끝까지 실행(코딩 도구), 재제출 전 |
 
 - 판정기와 탐지 연습은 가상 요청이고 엔진의 실제 결과가 아닙니다. 통과해도 엔진의 사건 전달·접속 회수가 연결됐다는 뜻이 아닙니다.
 - 접속 앱 사용: 배포 주소를 열고 로그인 → 「이 기기 승인 요청」 → Supabase SQL Editor에서 `devices`의 그 행을 `approved`로 → 「승인된 이 기기로 확인」 → 자료실과 「탈환 작전실」이 열립니다(2026-10-14 새 Windows PC에서 학생이 실행). 패스키는 고정 배포 주소에만 묶여 로컬에서는 승인할 수 없습니다.
@@ -108,12 +108,21 @@
 
 | 단계 | 처음 낸 커밋 | 심판 결과 | 해결 커밋 | 재제출 결과 |
 | --- | --- | --- | --- | --- |
+| 12단계 | `c4d4378` | `S12_BUNDLE_UNSUPPORTED` | 아래 「S12_BUNDLE_UNSUPPORTED」의 수정 | 재제출 전 |
 | 11단계 | 기록 없음(코드의 마지막 변경은 `bfba3c6`이고 그 뒤 `0163a29`·`e518c51`·`5e52985`는 README만 바꿈) | 거부 없음 | 없음 | 통과(학생 보고, 제출한 커밋과 제출 횟수는 기록 없음) |
 | 10단계 | `f0db501`, 2차 `789b1c1` | `S10_BACKUP_UNVERIFIED` 두 번 | `50596ac`(README) | 통과(학생 보고, 재제출한 커밋은 기록 없음) |
 | 9단계 | `a06fe52` | `S09_NO_PROPOSAL` | `4d859b2` | 통과(학생 보고) |
 | 8단계 | `686a4bb` | `S08_OTHER_ZONE_ALLOWED` | `f3010d7` | 통과(학생 보고) |
 | 7단계 | `ba8b88f`, 2차 `59b4eab` | `S07_SAME_VERDICT` 두 번 | `10d569d` | 3차 통과(학생 보고) |
 | 5단계 | `e78d6db` | `S05_ORIGINAL_URL_MISSING` | `edb4aa4` | `e59b9b6`로 통과(학생 보고) |
+
+### S12_BUNDLE_UNSUPPORTED: 제출 묶음이 격리 환경에서 끝까지 실행되지 않음
+
+- 심판 메모: 격리 환경에서는 `node:fs`·`node:path`·`node:url`·`node:child_process`(git 읽기)·`node:crypto`만 쓸 수 있고, 요청은 공개 HTTPS 주소로 보내는 GET·HEAD만 됩니다. 쓰기 요청이 필요한 점검은 observed를 `not_run`으로 둡니다.
+- 원인: `src/attack-check.mjs`가 로그인 없는 쓰기 요청 7개(메모 POST·PUT·DELETE, 공지 PUT, 복원 POST 2개, 기기 등록 POST)를 보냈습니다. 제출 묶음 경로의 모듈은 모두 허용 목록 안이었습니다(`scripts/bundle.mjs`는 `node:child_process`·`fs`·`path`·`url`, 판정기와 점검 파일은 import 없음).
+- 해결(`src/attack-check.mjs`, `test/step12-savepoint.test.mjs`): 쓰기 요청을 모두 지웠습니다. `anonymous_write`·`instructor_notice_edit`·`restore_without_login`은 observed가 `not_run`이고, `forged_device_approval`은 GET 결과(기기 상태, 작전실)와 함께 `가짜 토큰 POST /api/device/register → not_run`을 적습니다. 점검 개수(20개)와 ID는 그대로이고, 시험은 보낸 요청이 모두 `GET https://`인지 확인합니다.
+- 재현(수정 전 → 후): 심판 메모대로 모듈과 요청 방식을 막은 모의 격리 환경에서 새로 받은 저장소의 `npm run bundle`을 실행했습니다(코딩 도구가 실제 실행. 심판의 실제 환경은 아님). 수정 전에는 `POST /api/notes`에서 멈췄고(종료 코드 1, 묶음 없음), 수정 후에는 공개 HTTPS GET 11개만 보내고 끝까지 실행됐습니다(종료 코드 0, 단계 12·규칙 5개·직접 점검 20개).
+- 한계: 쓰기 점검 3개와 기기 등록 요청은 이제 자기 점검에서 보내지 않으며, 그 거부는 시험(`node --test`)으로만 확인합니다. 심판의 실제 격리 환경이 모의 환경과 같은지는 볼 수 없습니다.
 
 ### S10_BACKUP_UNVERIFIED: 사본을 다시 읽어 검증하지 않았거나 검증 실패 뒤에도 복원함
 
@@ -170,12 +179,13 @@
 | 바꾼 곳 | 내용 |
 | --- | --- |
 | `scripts/deployment-identity.mjs` | 허용 단계에 12를 더했습니다. 13은 거부합니다. |
-| `src/attack-check.mjs` | 12단계를 받습니다. 점검 한도가 20개라 새 항목을 늘리지 않고 `forged_device_approval`에 로그인 없는·가짜 토큰의 `GET /api/war-room` 요청을 합쳤습니다. 로그인한 작전실 요청은 보내지 않고 미실행으로 남습니다. |
+| `src/attack-check.mjs` | 12단계를 받습니다. 점검 한도가 20개라 새 항목을 늘리지 않고 `forged_device_approval`에 로그인 없는·가짜 토큰의 `GET /api/war-room` 요청을 합쳤습니다. 로그인한 작전실 요청은 보내지 않고 미실행으로 남습니다. `S12_BUNDLE_UNSUPPORTED` 뒤로는 GET만 보내고, 쓰기 요청이 필요한 점검은 `not_run`입니다(위 「심판 결과와 해결 기록」). |
 | `test/step12-savepoint.test.mjs` | 11단계 저장점 시험의 이름을 바꾸고 12단계 기대(`step` 12, 13 거부, 작전실 요청 포함)로 고쳤습니다. |
 
 - 판정기(`src/decider.mjs`)는 바꾸지 않았습니다. `RULE_IDS` 5개(`starter.deny`, `device_registered`, `step_up_required`, `own_notes_zone`, `instructor_notice_zone`)는 그대로입니다.
 - 확인(2026-10-14, 코딩 도구가 실행): `node --test "test/*.test.mjs"` 142개 통과, `test:package` 3개 통과, `decider:test`·`detect:test` 모두 「통과」, 가짜 Vercel 값으로 만든 빌드 식별이 `step` 12·허용 경로 5개·`restoreRoute`·`originalApiUrl`을 싣고 `step` 13은 거부.
-- 미실행: 배포본의 `/aleph.json`이 `step` 12로 바뀌었는지(푸시·배포 뒤 확인), `npm run bundle`, 12단계 심판 제출, 총공세 41종.
+- S12 수정 뒤 확인(2026-10-14, 코딩 도구가 실행): 전체 시험 142개 통과. 새로 받은 저장소에서 `npm install`은 종료 코드 0·취약점 0·잠금 파일 변화 없음. 가상 요청 22종(정상, 미등록, 목록, 공지 수정, 복합 이상, 계약 밖 이름이 섞인 요청, 모양이 틀린 요청 등)에서 판정기가 읽은 이름은 계약의 11개와 그 안의 `signals`·`stepUp`·`recentEvents` 항목뿐이었고(`role`·`identity`·`device`·`geo`는 읽지 않음), 응답은 모두 이름 5개에 `ruleIds`가 `RULE_IDS` 안이었습니다. `requestId`가 없는 입력 5종은 돌려줄 ID가 없습니다(6단계부터의 약점).
+- 미실행: 수정본의 12단계 재제출, 총공세 41종.
 
 ## 11단계 현재 상태: 나만의 접속 앱을 완성합니다
 
