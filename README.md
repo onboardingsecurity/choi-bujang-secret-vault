@@ -7,28 +7,28 @@
 이 README에는 설치·실행·중지·복구 안내와 이 목차만 둡니다. 단계별 기록은 `docs/readme/` 폴더의 파일로 나눠 두었습니다. 처음 오는 사람과 다른 코딩 도구는 아래 표에서 단계를 찾아 링크를 여세요. 각 파일의 글은 나누기 전 README의 글을 그대로 옮긴 것이고, 다른 절을 가리키던 말만 링크로 바꿨습니다.
 
 - 저장점을 갱신할 때는 해당 단계(또는 보너스) 파일에 쓰고, 이 표의 요약·결과 칸도 함께 고칩니다. 이 README에는 지금 작동하는 기능과 다시 실행하는 방법만 짧게 둡니다.
-- 「심판 결과」 칸은 기록에 적힌 학생 보고를 옮긴 것입니다. 적혀 있지 않은 것은 통과가 아니라 "기록 없음" 또는 "미확인"입니다. 자세한 내용은 [심판 결과와 해결 기록](docs/readme/judge-results.md)을 보세요.
+- 「심판 결과」 칸은 학생이 알려 준 결과(학생 보고)를 옮긴 것이며, 코딩 도구가 심판 화면을 본 것은 아닙니다. 제출한 커밋과 거부 여부가 기록에 없는 곳이 있습니다. 자세한 내용은 [심판 결과와 해결 기록](docs/readme/judge-results.md)을 보세요.
 - 단계마다 있는 「확인 기록」과 「남은 약점」은 코딩 도구가 직접 돌린 연습이며 심판 판정이 아닙니다.
 
 | 단계 | 파일 | 한 줄 요약 | 심판 결과(학생 보고) |
 | --- | --- | --- | --- |
-| 1단계 | 이 README 맨 위 「학생이 하는 일: 세 걸음」 | GitHub 저장소와 Vercel 배포를 만들고 가상 메모 공개 상태를 확인하는 출발점 | 기록 없음(1단계 판정은 포털에서 확인) |
-| 2단계 | [docs/readme/step-02.md](docs/readme/step-02.md) | 정적 `data.json`을 없애고 가상 메모 문장이 저장소·배포에 없는지 검색으로 확인 | 기록 없음 |
-| 3단계 | [docs/readme/step-03.md](docs/readme/step-03.md) | Supabase Auth 이메일·비밀번호로 로그인·로그아웃, 로그인 전에는 메모 숨김 | 기록 없음 |
-| 4단계 | [docs/readme/step-04.md](docs/readme/step-04.md) | 서버가 로그인한 사용자와 메모의 `owner_id`를 비교해 본인 메모만 읽기·수정·삭제 | 기록 없음 |
+| 1단계 | 이 README 맨 위 「학생이 하는 일: 세 걸음」 | GitHub 저장소와 Vercel 배포를 만들고 가상 메모 공개 상태를 확인하는 출발점 | 통과(학생 보고, 제출한 커밋 기록 없음) |
+| 2단계 | [docs/readme/step-02.md](docs/readme/step-02.md) | 정적 `data.json`을 없애고 가상 메모 문장이 저장소·배포에 없는지 검색으로 확인 | 통과(학생 보고, 제출한 커밋 기록 없음) |
+| 3단계 | [docs/readme/step-03.md](docs/readme/step-03.md) | Supabase Auth 이메일·비밀번호로 로그인·로그아웃, 로그인 전에는 메모 숨김 | 통과(학생 보고, 제출한 커밋 기록 없음) |
+| 4단계 | [docs/readme/step-04.md](docs/readme/step-04.md) | 서버가 로그인한 사용자와 메모의 `owner_id`를 비교해 본인 메모만 읽기·수정·삭제 | 통과(학생 보고, 제출한 커밋 기록 없음) |
 | 5단계 | [docs/readme/step-05.md](docs/readme/step-05.md) | 브라우저가 Supabase 메모를 직접 부르지 않고 서버 함수로만 접근, 원본 API 주소와 DB 권한 정리 | 통과(재제출 `e59b9b6`, `S05_ORIGINAL_URL_MISSING` 뒤) |
-| 6단계 | [docs/readme/step-06.md](docs/readme/step-06.md) | 등록한 기기만 자료실 읽기(`device_registered`) | 기록 없음 |
+| 6단계 | [docs/readme/step-06.md](docs/readme/step-06.md) | 등록한 기기만 자료실 읽기(`device_registered`) | 통과(학생 보고, 제출한 커밋 기록 없음) |
 | 7단계 | [docs/readme/step-07.md](docs/readme/step-07.md) | 평소와 다른 접속은 추가 확인(`step_up_required`) | 통과(3차, `S07_SAME_VERDICT` 두 번 뒤) |
 | 8단계 | [docs/readme/step-08.md](docs/readme/step-08.md) | 자료마다 갈 수 있는 구역을 나눔(`own_notes_zone`, `instructor_notice_zone`) | 통과(`S08_OTHER_ZONE_ALLOWED` 뒤) |
 | 9단계 | [docs/readme/step-09.md](docs/readme/step-09.md) | 탐지 규칙(`src/detect.mjs`)으로 이상 접속을 찾고 접속 회수를 제안 | 통과(`S09_NO_PROPOSAL` 뒤) |
 | 10단계 | [docs/readme/step-10.md](docs/readme/step-10.md) | 백업 사본에서 정책과 메모를 검증한 뒤 복원 (검증 절차는 이 README 아래 「10단계 일부」) | 통과(`S10_BACKUP_UNVERIFIED` 두 번 뒤) |
 | 11단계 | [docs/readme/step-11.md](docs/readme/step-11.md) | 설치형 웹앱과 기기 승인(패스키) | 통과(제출한 커밋 기록 없음) |
 | 12단계 | [docs/readme/step-12.md](docs/readme/step-12.md) + 이 README의 「설치·실행·중지·복구 안내」 | 탈환 작전실과 설치·실행·중지·복구 안내 | 통과(13번째 제출 `434cace`) |
-| 보너스: 웹 주입 | [docs/readme/bonus-web-injection.md](docs/readme/bonus-web-injection.md) | 웹 요청에 섞인 SQL·스크립트·경로 이동·명령 구분자 주입 반복을 판단 | 미확인(학생 보고 없음) |
-| 보너스: 무차별 로그인 | [docs/readme/bonus-brute-force.md](docs/readme/bonus-brute-force.md) | 짧은 시간에 몰린 로그인 실패(같은 주소의 연속 실패, 여러 계정에 같은 비밀번호)를 판단 | 미확인(학생 보고 없음) |
-| 보너스: 알려진 취약점 | [docs/readme/bonus-known-cve.md](docs/readme/bonus-known-cve.md) | CVE-2021-44228(Log4j) 형태 요청을 판단 | 미확인(학생 보고 없음) |
-| 보너스: 몰래 심어진 프로그램 | [docs/readme/bonus-persistence.md](docs/readme/bonus-persistence.md) | 서명 없는 새 서비스, 처음 보는 예약 작업, 시작 폴더 변경을 판단 | 미확인(학생 보고 없음) |
-| 보너스: 권한 가로채기 | [docs/readme/bonus-privilege.md](docs/readme/bonus-privilege.md) | 평범한 계정의 관리자 그룹 추가·처음 보는 관리자 명령 같은 권한 상승을 판단 | 미확인(학생 보고 없음) |
+| 보너스: 웹 주입 | [docs/readme/bonus-web-injection.md](docs/readme/bonus-web-injection.md) | 웹 요청에 섞인 SQL·스크립트·경로 이동·명령 구분자 주입 반복을 판단 | 통과(학생 보고, 제출한 커밋 기록 없음) |
+| 보너스: 무차별 로그인 | [docs/readme/bonus-brute-force.md](docs/readme/bonus-brute-force.md) | 짧은 시간에 몰린 로그인 실패(같은 주소의 연속 실패, 여러 계정에 같은 비밀번호)를 판단 | 통과(학생 보고, 제출한 커밋 기록 없음) |
+| 보너스: 알려진 취약점 | [docs/readme/bonus-known-cve.md](docs/readme/bonus-known-cve.md) | CVE-2021-44228(Log4j) 형태 요청을 판단 | 통과(학생 보고, 제출한 커밋 기록 없음) |
+| 보너스: 몰래 심어진 프로그램 | [docs/readme/bonus-persistence.md](docs/readme/bonus-persistence.md) | 서명 없는 새 서비스, 처음 보는 예약 작업, 시작 폴더 변경을 판단 | 통과(학생 보고, 제출한 커밋 기록 없음) |
+| 보너스: 권한 가로채기 | [docs/readme/bonus-privilege.md](docs/readme/bonus-privilege.md) | 평범한 계정의 관리자 그룹 추가·처음 보는 관리자 명령 같은 권한 상승을 판단 | 통과(학생 보고, 제출한 커밋 기록 없음) |
 | 보너스: 큰 전송 유출(`exfiltration`) | 없음 | 구현하지 않았습니다 | 해당 없음 |
 
 ## 학생이 하는 일: 세 걸음
