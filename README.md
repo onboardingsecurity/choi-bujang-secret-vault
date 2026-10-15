@@ -697,6 +697,40 @@ update public.devices set status = 'revoked' where id = '<조회한 id>' returni
 - 기준 값(15건·5계정)은 연습 경보에 맞춘 값이고 시험 자료도 가짜입니다. 심판 경보의 형식은 이 저장소에서 확인할 수 없습니다.
 - `npm run test:package`는 이전 단계부터 실패했으나, `api/config.js`를 `api/config/index.js`로, `api/_notes.js`를 `src/notes-api.mjs`로 옮겨 통과합니다(주소·동작 불변, 시험·기준표는 고치지 않음).
 
+## 보너스: 알려진 취약점 악용 탐지 현재 상태
+
+연습 경보(`xdr/fixtures/known-cve.json`, 가상 24건)만 다루는 부품입니다. CVE-2021-44228(Log4j) 형태 요청을 다룹니다. 앞의 두 보너스와 같은 구조이고, ZTNA 판정기(`src/decider.mjs`)에는 **연결하지 않았습니다**(아래). 이 결과는 직접 돌린 연습이며 심판 판정이 아닙니다.
+
+- `xdr/known-cve/decide.mjs`: `decide(alert)` 하나만 내보내며 `import`가 없고 파일·네트워크도 쓰지 않습니다. 반환은 `{ action, confidence, reason }`이고 0.85 이상 block, 0.5 이상 alert, 그 아래 record입니다. 머리글(`useragent`)이나 주소(`url`)에 `${jndi:<프로토콜>://` 형태가 끝까지 이어져 있으면 block(한 곳 0.9, 두 곳 0.95, 점검 흔적이 함께 있으면 +0.03)입니다. jndi 낱말, CVE 번호, 잘린 조각만 있으면 alert(0.5~0.8)이고, 단서가 없으면 record입니다. 퍼센트 인코딩은 두 번까지 풀어서 봅니다. `reason`에는 패턴 이름과 위치만 적고 조회 구문 자체는 옮겨 적지 않습니다.
+- `xdr/known-cve/patterns.json`: 근거 패턴 둘(`jndi_lookup_in_request`, `known_scanner_trace`)입니다. 근거는 CVE-2021-44228(NIST NVD)과 ATT&CK T1190이고 `decide.mjs` 맨 위 상수와 값이 같습니다. 애매한 단서 목록(`AMBIGUOUS_HINTS`)은 `decide.mjs`에만 있습니다.
+- `xdr/known-cve/respond.mjs`: block만 차단 후보(`block-candidates.json`, 만료 60분·근거 경보 번호 포함)로 만들고 block·alert를 `xdr/alerts.log`에 한 줄씩 쌓습니다. 같은 주소의 정상 이벤트가 공격 시도보다 많거나, 주소 형식이 아니거나, 내부·특수 주소(10.x, 127.x, 192.168.x 등)면 후보에서 뺍니다.
+- `xdr/known-cve/read-alerts.mjs`: 경보에서 시각·주소·계정·수준·설명만 뽑고 비밀값 모양은 가립니다. 조회 구문이 든 `useragent`·`url`은 뽑지 않습니다. 확인용이며 `decide.mjs`는 불러오지 않습니다.
+- 다시 실행: `npm run xdr:run -- known-cve`(결과 `result.json`), `node xdr/known-cve/respond.mjs`(후보·알림), `node xdr/known-cve/read-alerts.mjs`(경보 24건 / 뽑은 줄 24줄 일치 확인). `result.json`, `block-candidates.json`, `alerts.log`는 산출물이라 Git에서 제외했습니다. 이 보너스 전용 시험 파일은 만들지 않았습니다.
+
+### 알려진 취약점 보너스 확인 기록
+
+| 확인 | 실행한 쪽 | 결과 |
+| --- | --- | --- |
+| 연습 경보 24건의 `xdr:run` | 코딩 도구가 실제 실행 | block 8 / alert 8 / record 8. 완전한 조회 구문이 있는 8건 전부 block, 애매한 8건 전부 alert, 정상 8건 전부 record. 정상 이벤트를 block한 경우 없음 |
+| 읽기 모듈의 건수 비교 | 같음 | 경보 24건 / 뽑은 줄 24줄 일치 |
+| `respond.mjs` 연습 경보 실행 | 같음 | 차단 후보 7건(공격 주소), 알림 16줄. 임시 폴더의 가상 경보 12건으로 내부 주소·형식 불량·정상이 더 많은 주소 제외도 확인 |
+| 기존 시험 `node --test test/*.test.mjs` | 같음 | `npm ci` 뒤 143개 통과. `npm ci` 전에는 `@supabase/supabase-js`가 설치되지 않아 5개 파일이 실패했고, 이 보너스 파일과는 무관했습니다 |
+| 보안·요구 자기 점검 19항목 | 같음 | 18개 통과, 1개 보류(판정기 연결: 요청 계약에 출발 주소가 없어 운영 쪽 조건이 필요함, 아래) |
+| `read-alerts.mjs`의 형식 오류 경로 | 미실행 | 시험하지 않았습니다 |
+| 실제 배포 주소·Supabase에 대한 요청 | 미실행 | 이번 보너스는 배포와 DB를 건드리지 않았습니다 |
+| `npm run bundle`과 `attack-check.mjs` | 미실행 | 이번 보너스에서 바꾸지 않았고 실행하지 않았습니다 |
+
+### 알려진 취약점 보너스의 남은 약점 (해소되지 않음)
+
+- **판정기에 연결하지 않았습니다.** 차단 후보는 파일로만 남고 실제 접속 차단은 일어나지 않습니다. 판정기 요청 계약(`docs/DECIDER_REQUEST.md`의 18개 항목)에 출발 주소가 없고, 계약에 없는 항목을 만들어 쓰지 않기로 했습니다. 운영 쪽이 계약에 값을 더해야 풀립니다.
+- **후보 만료(60분)를 강제하는 곳이 없습니다.** 후보 파일은 `respond.mjs`를 실행할 때마다 새로 씁니다.
+- 글자를 쪼개거나 중첩해 숨긴 조회 구문(`${${lower:j}ndi:…}` 같은 변형)은 근거 자료가 없어 넣지 않았고, 지금은 놓칩니다. 실제 점검 도구의 이름 목록도 같은 이유로 없습니다.
+- 애매한 단서 일부(점검 도구, 중괄호)는 경보 설명의 한국어 문구에서만 읽습니다. 다른 문구의 경보는 record로 처리되어 놓칠 수 있습니다. 완전한 구문은 `useragent`·`url` 값만 보므로 문구와 상관없이 block됩니다.
+- 확신도 숫자(0.9, 0.95, 0.03, 0.5~0.8)와 "한 번이면 block"은 이 모듈이 정한 값입니다. ATT&CK도 NVD도 정하지 않았습니다. 반복 횟수는 판정에 반영하지 않습니다.
+- IPv6 주소는 후보에서 빠집니다(알림 로그에는 남습니다). `alerts.log`는 계속 쌓이고 정리 규칙이 없으며, 다시 실행하면 줄이 중복됩니다.
+- 주소 단위 차단뿐이라 주소를 바꾸는 공격과 공용 주소(NAT) 사정은 구분하지 못합니다.
+- 시험 자료가 가짜이고 심판 경보의 형식은 이 저장소에서 확인할 수 없습니다.
+
 ## 5단계 현재 상태
 
 - 브라우저 코드(`public/index.html`)에는 메모 자료를 Supabase에서 직접 읽거나 고치는 곳이 없습니다. Supabase 호출은 로그인(`signInWithPassword`·`signOut`·`getSession`·`onAuthStateChange`)뿐이고, 메모 읽기·추가·수정·삭제는 `/api/notes`와 `/api/notes/:id` 서버 함수로만 갑니다. 서버 함수의 로그인·소유자 검사와 서버 전용 설정(`SUPABASE_URL`, `SUPABASE_SECRET_KEY`)은 4단계 그대로입니다.
