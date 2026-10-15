@@ -1,4 +1,4 @@
-[← 메인 README(목차)로 돌아가기](../README.md#단계별-기록-목차)
+[← 메인 README(목차)로 돌아가기](../../README.md#단계별-기록-목차)
 
 ## 10단계 기록 (11단계에서 일부 바뀜): 백업에서 자료실을 되살립니다
 
@@ -6,7 +6,7 @@
 
 침해 전에 검증한 정책·메모 사본에서 대상만 복원합니다. 저장점에서 `aleph.config.json`의 `step`을 10으로 올렸고 `scripts/deployment-identity.mjs`와 `src/attack-check.mjs`가 10단계를 받도록 고쳤습니다. 빌드가 만드는 배포본 `/aleph.json`에는 10단계부터 `restoreRoute`도 실립니다(5단계에서 `originalApiUrl`이 설정에만 있어 `S05_ORIGINAL_URL_MISSING`을 받은 일을 되풀이하지 않기 위함이며, `POST /api/…` 모양이 아니면 빌드가 실패합니다). 자기 점검(`src/attack-check.mjs`)에는 복원 경로에 토큰 없는 요청(`anonymous_restore`)과 가짜 토큰 요청(`fake_token_restore`)만 실제로 보내고, 다른 로그인 계정의 복원 요청(`restore_other_user`)은 미실행으로 남겼습니다. `test/step9-savepoint.test.mjs`는 `test/step10-savepoint.test.mjs`로 바꿨습니다. 판정기 규칙은 더하지 않아 `RULE_IDS` 5개는 그대로이고 모두 구현에 쓰입니다. 아래 결과는 직접 돌린 연습이며 심판 판정이 아닙니다.
 
-> 「복원 전에 사본을 검증합니다」 절은 메인 README의 같은 이름 절에 있습니다. [바로 가기](../README.md#복원-전에-사본을-검증합니다)
+> 「복원 전에 사본을 검증합니다」 절은 메인 README의 같은 이름 절에 있습니다. [바로 가기](../../README.md#복원-전에-사본을-검증합니다)
 
 ### 만든 것
 
@@ -58,7 +58,7 @@
 | 1~9단계 정상·금지 요청 재실행 | 일부 실행 | 시험 명령 4개(`node --test`, `decider:test`, `detect:test`, `fixture:7`), `npm run bundle`의 자기 점검, 코딩 도구의 읽기 요청을 실행했습니다. 로그인 화면과 A·B 계정으로 보내는 요청은 미실행입니다. 위 표의 상태 칸을 보세요 |
 | 저장점 설정 대조 | 코딩 도구가 실제 실행 | `step` 10. `repoUrl`·`allowedRoutes`·`originalApiUrl`·`judgeIssuer`·`identityProvider`는 9단계와 같고 바꾸지 않았으며 `restoreRoute`는 `POST /api/restore/note`입니다. 빌드 식별(가짜 Vercel 환경값)이 `step` 10과 `restoreRoute`를 싣고 `step` 11, `restoreRoute`가 없거나 `GET`·주소 전체·쿼리가 든 값은 거부. 자기 점검(가짜 `fetch`)은 20항목으로 형식·중복·길이 통과이며 실제 배포 주소에는 요청을 보내지 않음. 전체 시험 107개 통과 |
 | `npm run bundle` (커밋 789b1c1) | 학생이 실행, 코딩 도구가 묶음 확인 | 단계 10, 바뀐 파일 2개, 규칙 5개, 직접 점검 20개. 실제 요청 12개는 모두 401·404 또는 `X-Resource-Id: notes.own`이고 메모 내용 없음, 미실행 5개, 확인 불가 3개. 처음에는 `bundle-notes.json`이 없어 실패했고, 다시 만든 뒤 성공했습니다. 묶음과 설명 파일은 커밋하지 않습니다 |
-| 심판의 10단계 제출 | 학생 보고 | 두 번 제출해 두 번 모두 `S10_BACKUP_UNVERIFIED`로 거부(두 번째는 커밋 789b1c1, 첫 번째 커밋은 기록 없음). 그 뒤 [「복원 전에 사본을 검증합니다」](../README.md#복원-전에-사본을-검증합니다)를 이 절(지금은 메인 README에 있음)에 적은 커밋 `50596ac` 이후의 재제출은 통과(학생 보고) |
+| 심판의 10단계 제출 | 학생 보고 | 두 번 제출해 두 번 모두 `S10_BACKUP_UNVERIFIED`로 거부(두 번째는 커밋 789b1c1, 첫 번째 커밋은 기록 없음). 그 뒤 [「복원 전에 사본을 검증합니다」](../../README.md#복원-전에-사본을-검증합니다)를 이 절(지금은 메인 README에 있음)에 적은 커밋 `50596ac` 이후의 재제출은 통과(학생 보고) |
 
 ### 10단계의 남은 약점 (해소되지 않음)
 

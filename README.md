@@ -4,31 +4,31 @@
 
 ## 단계별 기록 목차
 
-이 README에는 설치·실행·중지·복구 안내와 이 목차만 둡니다. 단계별 기록은 `readme/` 폴더의 파일로 나눠 두었습니다. 처음 오는 사람과 다른 코딩 도구는 아래 표에서 단계를 찾아 링크를 여세요. 각 파일의 글은 나누기 전 README의 글을 그대로 옮긴 것이고, 다른 절을 가리키던 말만 링크로 바꿨습니다.
+이 README에는 설치·실행·중지·복구 안내와 이 목차만 둡니다. 단계별 기록은 `docs/readme/` 폴더의 파일로 나눠 두었습니다. 처음 오는 사람과 다른 코딩 도구는 아래 표에서 단계를 찾아 링크를 여세요. 각 파일의 글은 나누기 전 README의 글을 그대로 옮긴 것이고, 다른 절을 가리키던 말만 링크로 바꿨습니다.
 
 - 저장점을 갱신할 때는 해당 단계(또는 보너스) 파일에 쓰고, 이 표의 요약·결과 칸도 함께 고칩니다. 이 README에는 지금 작동하는 기능과 다시 실행하는 방법만 짧게 둡니다.
-- 「심판 결과」 칸은 기록에 적힌 학생 보고를 옮긴 것입니다. 적혀 있지 않은 것은 통과가 아니라 "기록 없음" 또는 "미확인"입니다. 자세한 내용은 [심판 결과와 해결 기록](readme/judge-results.md)을 보세요.
+- 「심판 결과」 칸은 기록에 적힌 학생 보고를 옮긴 것입니다. 적혀 있지 않은 것은 통과가 아니라 "기록 없음" 또는 "미확인"입니다. 자세한 내용은 [심판 결과와 해결 기록](docs/readme/judge-results.md)을 보세요.
 - 단계마다 있는 「확인 기록」과 「남은 약점」은 코딩 도구가 직접 돌린 연습이며 심판 판정이 아닙니다.
 
 | 단계 | 파일 | 한 줄 요약 | 심판 결과(학생 보고) |
 | --- | --- | --- | --- |
 | 1단계 | 이 README 맨 위 「학생이 하는 일: 세 걸음」 | GitHub 저장소와 Vercel 배포를 만들고 가상 메모 공개 상태를 확인하는 출발점 | 기록 없음(1단계 판정은 포털에서 확인) |
-| 2단계 | [readme/step-02.md](readme/step-02.md) | 정적 `data.json`을 없애고 가상 메모 문장이 저장소·배포에 없는지 검색으로 확인 | 기록 없음 |
-| 3단계 | [readme/step-03.md](readme/step-03.md) | Supabase Auth 이메일·비밀번호로 로그인·로그아웃, 로그인 전에는 메모 숨김 | 기록 없음 |
-| 4단계 | [readme/step-04.md](readme/step-04.md) | 서버가 로그인한 사용자와 메모의 `owner_id`를 비교해 본인 메모만 읽기·수정·삭제 | 기록 없음 |
-| 5단계 | [readme/step-05.md](readme/step-05.md) | 브라우저가 Supabase 메모를 직접 부르지 않고 서버 함수로만 접근, 원본 API 주소와 DB 권한 정리 | 통과(재제출 `e59b9b6`, `S05_ORIGINAL_URL_MISSING` 뒤) |
-| 6단계 | [readme/step-06.md](readme/step-06.md) | 등록한 기기만 자료실 읽기(`device_registered`) | 기록 없음 |
-| 7단계 | [readme/step-07.md](readme/step-07.md) | 평소와 다른 접속은 추가 확인(`step_up_required`) | 통과(3차, `S07_SAME_VERDICT` 두 번 뒤) |
-| 8단계 | [readme/step-08.md](readme/step-08.md) | 자료마다 갈 수 있는 구역을 나눔(`own_notes_zone`, `instructor_notice_zone`) | 통과(`S08_OTHER_ZONE_ALLOWED` 뒤) |
-| 9단계 | [readme/step-09.md](readme/step-09.md) | 탐지 규칙(`src/detect.mjs`)으로 이상 접속을 찾고 접속 회수를 제안 | 통과(`S09_NO_PROPOSAL` 뒤) |
-| 10단계 | [readme/step-10.md](readme/step-10.md) | 백업 사본에서 정책과 메모를 검증한 뒤 복원 (검증 절차는 이 README 아래 「10단계 일부」) | 통과(`S10_BACKUP_UNVERIFIED` 두 번 뒤) |
-| 11단계 | [readme/step-11.md](readme/step-11.md) | 설치형 웹앱과 기기 승인(패스키) | 통과(제출한 커밋 기록 없음) |
-| 12단계 | [readme/step-12.md](readme/step-12.md) + 이 README의 「설치·실행·중지·복구 안내」 | 탈환 작전실과 설치·실행·중지·복구 안내 | 통과(13번째 제출 `434cace`) |
-| 보너스: 웹 주입 | [readme/bonus-web-injection.md](readme/bonus-web-injection.md) | 웹 요청에 섞인 SQL·스크립트·경로 이동·명령 구분자 주입 반복을 판단 | 미확인(학생 보고 없음) |
-| 보너스: 무차별 로그인 | [readme/bonus-brute-force.md](readme/bonus-brute-force.md) | 짧은 시간에 몰린 로그인 실패(같은 주소의 연속 실패, 여러 계정에 같은 비밀번호)를 판단 | 미확인(학생 보고 없음) |
-| 보너스: 알려진 취약점 | [readme/bonus-known-cve.md](readme/bonus-known-cve.md) | CVE-2021-44228(Log4j) 형태 요청을 판단 | 미확인(학생 보고 없음) |
-| 보너스: 몰래 심어진 프로그램 | [readme/bonus-persistence.md](readme/bonus-persistence.md) | 서명 없는 새 서비스, 처음 보는 예약 작업, 시작 폴더 변경을 판단 | 미확인(학생 보고 없음) |
-| 보너스: 권한 가로채기 | [readme/bonus-privilege.md](readme/bonus-privilege.md) | 평범한 계정의 관리자 그룹 추가·처음 보는 관리자 명령 같은 권한 상승을 판단 | 미확인(학생 보고 없음) |
+| 2단계 | [docs/readme/step-02.md](docs/readme/step-02.md) | 정적 `data.json`을 없애고 가상 메모 문장이 저장소·배포에 없는지 검색으로 확인 | 기록 없음 |
+| 3단계 | [docs/readme/step-03.md](docs/readme/step-03.md) | Supabase Auth 이메일·비밀번호로 로그인·로그아웃, 로그인 전에는 메모 숨김 | 기록 없음 |
+| 4단계 | [docs/readme/step-04.md](docs/readme/step-04.md) | 서버가 로그인한 사용자와 메모의 `owner_id`를 비교해 본인 메모만 읽기·수정·삭제 | 기록 없음 |
+| 5단계 | [docs/readme/step-05.md](docs/readme/step-05.md) | 브라우저가 Supabase 메모를 직접 부르지 않고 서버 함수로만 접근, 원본 API 주소와 DB 권한 정리 | 통과(재제출 `e59b9b6`, `S05_ORIGINAL_URL_MISSING` 뒤) |
+| 6단계 | [docs/readme/step-06.md](docs/readme/step-06.md) | 등록한 기기만 자료실 읽기(`device_registered`) | 기록 없음 |
+| 7단계 | [docs/readme/step-07.md](docs/readme/step-07.md) | 평소와 다른 접속은 추가 확인(`step_up_required`) | 통과(3차, `S07_SAME_VERDICT` 두 번 뒤) |
+| 8단계 | [docs/readme/step-08.md](docs/readme/step-08.md) | 자료마다 갈 수 있는 구역을 나눔(`own_notes_zone`, `instructor_notice_zone`) | 통과(`S08_OTHER_ZONE_ALLOWED` 뒤) |
+| 9단계 | [docs/readme/step-09.md](docs/readme/step-09.md) | 탐지 규칙(`src/detect.mjs`)으로 이상 접속을 찾고 접속 회수를 제안 | 통과(`S09_NO_PROPOSAL` 뒤) |
+| 10단계 | [docs/readme/step-10.md](docs/readme/step-10.md) | 백업 사본에서 정책과 메모를 검증한 뒤 복원 (검증 절차는 이 README 아래 「10단계 일부」) | 통과(`S10_BACKUP_UNVERIFIED` 두 번 뒤) |
+| 11단계 | [docs/readme/step-11.md](docs/readme/step-11.md) | 설치형 웹앱과 기기 승인(패스키) | 통과(제출한 커밋 기록 없음) |
+| 12단계 | [docs/readme/step-12.md](docs/readme/step-12.md) + 이 README의 「설치·실행·중지·복구 안내」 | 탈환 작전실과 설치·실행·중지·복구 안내 | 통과(13번째 제출 `434cace`) |
+| 보너스: 웹 주입 | [docs/readme/bonus-web-injection.md](docs/readme/bonus-web-injection.md) | 웹 요청에 섞인 SQL·스크립트·경로 이동·명령 구분자 주입 반복을 판단 | 미확인(학생 보고 없음) |
+| 보너스: 무차별 로그인 | [docs/readme/bonus-brute-force.md](docs/readme/bonus-brute-force.md) | 짧은 시간에 몰린 로그인 실패(같은 주소의 연속 실패, 여러 계정에 같은 비밀번호)를 판단 | 미확인(학생 보고 없음) |
+| 보너스: 알려진 취약점 | [docs/readme/bonus-known-cve.md](docs/readme/bonus-known-cve.md) | CVE-2021-44228(Log4j) 형태 요청을 판단 | 미확인(학생 보고 없음) |
+| 보너스: 몰래 심어진 프로그램 | [docs/readme/bonus-persistence.md](docs/readme/bonus-persistence.md) | 서명 없는 새 서비스, 처음 보는 예약 작업, 시작 폴더 변경을 판단 | 미확인(학생 보고 없음) |
+| 보너스: 권한 가로채기 | [docs/readme/bonus-privilege.md](docs/readme/bonus-privilege.md) | 평범한 계정의 관리자 그룹 추가·처음 보는 관리자 명령 같은 권한 상승을 판단 | 미확인(학생 보고 없음) |
 | 보너스: 큰 전송 유출(`exfiltration`) | 없음 | 구현하지 않았습니다 | 해당 없음 |
 
 ## 학생이 하는 일: 세 걸음
@@ -79,7 +79,7 @@
    | `SUPABASE_SECRET_KEY` | 서버 전용 키. 서버 함수만 씁니다 |
    | `SUPABASE_PUBLISHABLE_KEY` | 로그인 화면용 공개 키. `/api/config`로 내려갑니다. 없으면 로그인이 503 |
 
-5. Supabase에 표를 만듭니다. 기기 승인용 `devices`·`device_sessions` 표의 SQL은 아래 [「11단계 현재 상태」](readme/step-11.md)에 있습니다. 메모 표 `public.notes`의 SQL은 이 저장소에 없고 학생이 SQL Editor에서 직접 만들었습니다([5단계 기록](readme/step-05.md)). 새 프로젝트에서 처음부터 복구하려면 이 표 구조와 권한을 다시 만들어야 하며, 이 절차는 미실행입니다.
+5. Supabase에 표를 만듭니다. 기기 승인용 `devices`·`device_sessions` 표의 SQL은 아래 [「11단계 현재 상태」](docs/readme/step-11.md)에 있습니다. 메모 표 `public.notes`의 SQL은 이 저장소에 없고 학생이 SQL Editor에서 직접 만들었습니다([5단계 기록](docs/readme/step-05.md)). 새 프로젝트에서 처음부터 복구하려면 이 표 구조와 권한을 다시 만들어야 하며, 이 절차는 미실행입니다.
 6. 배포 뒤 `curl -s <배포주소>/aleph.json`의 `"commit"`이 방금 푸시한 커밋으로 시작하는지 봅니다(실행함: `93d1e41` 확인).
 
 ### 실행
@@ -117,7 +117,7 @@
 2. 메모 한 건 복원: 로그인한 승인된 기기에서 `POST /api/restore/note`에 `dryRun: true`를 먼저 보냅니다. 로그인이 없거나 사본에 없는 ID, 소유자가 아닌 계정은 거부됩니다. 실제 배포본의 복원은 이번에 다시 실행하지 않았습니다(미실행, 시험으로는 확인).
 3. 잘못 배포했을 때: Git에서는 `git revert <커밋>`으로 되돌리는 커밋을 만들고(`git reset --hard`는 쓰지 않습니다), Vercel의 이전 배포로 되돌리는 일은 Vercel 대시보드에서 합니다. 둘 다 이번에 실행하지 않았습니다(미실행). 기존 메모와 학습 DB 자료를 지우는 명령은 넣지 않았습니다.
 4. 기기를 잃어버렸거나 의심스러울 때: 위 「중지」의 회수 SQL. 이 PC를 다시 쓰려면 회수된 행을 되살리지 말고 새로 승인 요청을 합니다.
-5. 복구 뒤에는 위 「실행」의 시험과 `npm run recon:table`을 다시 돌려 앞의 정상·거부 결과가 그대로인지 봅니다. 메모·정책 복원 뒤의 1~9단계 순서 표는 아래 [10단계 절 「다시 실행하는 순서」](readme/step-10.md)에 있습니다.
+5. 복구 뒤에는 위 「실행」의 시험과 `npm run recon:table`을 다시 돌려 앞의 정상·거부 결과가 그대로인지 봅니다. 메모·정책 복원 뒤의 1~9단계 순서 표는 아래 [10단계 절 「다시 실행하는 순서」](docs/readme/step-10.md)에 있습니다.
 
 ### 재현 순서 (새로 받은 저장소에서)
 
@@ -137,7 +137,7 @@
 
 ## 10단계 일부: 복원 전에 사본을 검증합니다 (심판 판정과 연결된 절차)
 
-10단계의 나머지 기록은 [readme/step-10.md](readme/step-10.md)에 있습니다. 아래 절은 심판이 README 문장을 읽을 수 있다는 추정(`S10_BACKUP_UNVERIFIED`, [심판 결과](readme/judge-results.md))에 따라 메인 README에 남겼습니다.
+10단계의 나머지 기록은 [docs/readme/step-10.md](docs/readme/step-10.md)에 있습니다. 아래 절은 심판이 README 문장을 읽을 수 있다는 추정(`S10_BACKUP_UNVERIFIED`, [심판 결과](docs/readme/judge-results.md))에 따라 메인 README에 남겼습니다.
 
 ### 복원 전에 사본을 검증합니다
 
