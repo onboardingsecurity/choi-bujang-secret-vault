@@ -29,7 +29,7 @@
 | 보너스: 알려진 취약점 | [docs/readme/bonus-known-cve.md](docs/readme/bonus-known-cve.md) | CVE-2021-44228(Log4j) 형태 요청을 판단 | 통과(학생 보고, 제출한 커밋 기록 없음) |
 | 보너스: 몰래 심어진 프로그램 | [docs/readme/bonus-persistence.md](docs/readme/bonus-persistence.md) | 서명 없는 새 서비스, 처음 보는 예약 작업, 시작 폴더 변경을 판단 | 통과(학생 보고, 제출한 커밋 기록 없음) |
 | 보너스: 권한 가로채기 | [docs/readme/bonus-privilege.md](docs/readme/bonus-privilege.md) | 평범한 계정의 관리자 그룹 추가·처음 보는 관리자 명령 같은 권한 상승을 판단 | 통과(학생 보고, 제출한 커밋 기록 없음) |
-| 보너스: 큰 전송 유출(`exfiltration`) | 없음 | 구현하지 않았습니다 | 해당 없음 |
+| 보너스: 큰 전송 유출(`exfiltration`) | [docs/readme/bonus-exfiltration.md](docs/readme/bonus-exfiltration.md) | 처음 보는 목적지로 나간 큰 전송, 업무 시간 밖 압축 파일 반출, 같은 목적지 반복 전송, 평소에 쓰지 않던 포트 전송을 판단하고 목적지 차단 후보를 만듦(판정기에는 연결하지 않음) | 결과 없음(제출 전) |
 
 ## 학생이 하는 일: 세 걸음
 
