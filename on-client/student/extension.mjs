@@ -118,10 +118,68 @@ function identity({ me, devices, sessions } = {}) {
   return root;
 }
 
+const DECISION_TEXT = {
+  allow: '접근 허용',
+  deny: '접근 거부',
+  challenge: '추가 확인 필요',
+  unknown: '판정 확인 불가',
+};
+
+const DECISION_NOTE = {
+  allow: '정책상 접근 허용입니다. 실제 앱 접속 성공을 보장하지 않습니다.',
+  deny: '정책상 접근 거부입니다.',
+  challenge: '서버가 추가 확인을 요구했습니다. 이 앱은 확인 절차를 대신 수행하지 않습니다.',
+  unknown: '서버가 판정을 내리지 못했습니다. 허용되지 않음으로 취급하며, 허용으로 읽지 마세요.',
+};
+
+const DECISION_STYLE = {
+  allow: 'state state-ok',
+  deny: 'state state-error',
+  challenge: 'state state-empty',
+  unknown: 'state state-empty',
+};
+
+function decision(input) {
+  const { status, mode, data, error, appId } = input || {};
+  const root = node('div', undefined, 'student-decision');
+  if (Object.hasOwn(MODE_TEXT, mode)) root.append(node('p', `연결 방식: ${MODE_TEXT[mode]}`, 'student-mode'));
+  const target = typeof appId === 'string' && appId ? appId : '선택한 앱';
+
+  if (status === 'idle') {
+    root.append(node('p', '앱을 골라 접속을 요청하세요.', 'state state-empty'));
+  } else if (status === 'loading') {
+    root.append(node('p', `판정 확인 중: ${target}`, 'state state-loading'));
+  } else if (status === 'error') {
+    const message = error && typeof error.message === 'string' && error.message
+      ? error.message
+      : '서버가 오류 내용을 알려 주지 않았습니다.';
+    root.append(
+      node('p', `요청 실패: ${message}`, 'state state-error'),
+      node('p', `대상 앱: ${target}. 이것은 접근 거부 판정이 아닙니다. 허용 여부는 확인되지 않았습니다. 필요하면 직접 다시 요청하세요.`),
+    );
+  } else if (status === 'ok') {
+    const known = data && typeof data.decision === 'string' && Object.hasOwn(DECISION_TEXT, data.decision);
+    const code = known ? data.decision : 'unknown';
+    const list = node('dl', undefined, 'identity');
+    const row = (term, value) => list.append(node('dt', term), node('dd', value));
+    row('대상 앱', typeof (data && data.appId) === 'string' && data.appId ? data.appId : target);
+    row('판정 이유', data && typeof data.reason === 'string' && data.reason ? data.reason : '사유 정보 없음');
+    row('판정 시각', data && typeof data.checkedAt === 'string' && data.checkedAt ? data.checkedAt : '시각 정보 없음');
+    root.append(
+      node('p', `${DECISION_TEXT[code]}(${code})`, DECISION_STYLE[code]),
+      node('p', known ? DECISION_NOTE[code] : data ? '서버가 알 수 없는 판정 값을 보냈습니다. 허용으로 읽지 마세요.' : '서버 응답에 판정 정보가 없습니다. 허용으로 읽지 마세요.'),
+      list,
+    );
+  } else {
+    root.append(node('p', '확인 불가: 서버 응답 상태를 알 수 없습니다. 허용으로 읽지 마세요.', 'state state-empty'));
+  }
+  return root;
+}
+
 export function createStudentView() {
   return {
     renderIdentity(input) { return identity(input); },
-    renderDecision() { return '학생 구현 대기: 서버의 판정과 이유를 연결하세요.'; },
+    renderDecision(input) { return decision(input); },
     renderEvents() { return '학생 구현 대기: 본인 접속·XDR 기록을 연결하세요.'; },
     renderStatus() { return '학생 구현 대기: 기기·세션·알림과 연결 점검 상태를 구분하세요.'; },
     renderVulnerabilities() { return '학생 구현 대기: 정확한 설치 버전·OSV 출처·조회 시각·부분 결과·조회 실패를 구분하세요.'; },
