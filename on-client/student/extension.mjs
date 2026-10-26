@@ -795,6 +795,118 @@ function explanationView(input) {
   return root;
 }
 
+// 19단계: 조치 제안·사람 확인·서버 접수(ACK)·실제 효과 확인을 구분해 보여 준다. 이 칸은 표시만 하며 버튼·요청·확인 번호를 만들지 않는다.
+const RESEND_BUTTON = '「연동 시스템 결과만 재조회」(화면 표기: 「원천 결과만 재조회」)';
+
+const ACTION_STATUS = {
+  idle: { label: '아직 미실행(idle)', style: 'state state-empty' },
+  loading: { label: '조치 준비 또는 결과 조회 중(loading)', style: 'state state-loading', note: '결과가 아직 확인되지 않았습니다. 실행 여부와 효과는 알 수 없습니다.' },
+  prepared: { label: '준비됨·미실행(prepared)', style: 'state state-empty', note: '조치는 아직 서버에 전달되지 않았습니다. 사람이 아래 대상과 조치를 확인하고 제공 화면의 「대상과 조치를 확인했으며 집행합니다」를 직접 눌러야 전달됩니다.' },
+  executing: { label: '서버에 전달 중(executing)', style: 'state state-loading', note: '결과가 아직 없습니다. 전달 중인 요청의 효과는 확인되지 않았습니다.' },
+  pending: { label: '서버 접수·처리 중(pending)', style: 'state state-loading', note: '서버가 요청을 받았다는 응답(ACK)은 효과 확인이 아닙니다. 효과는 아직 확인되지 않았습니다.' },
+  succeeded: { label: '효과 확인(succeeded)', style: 'state state-ok' },
+  denied: { label: '거절(denied)', style: 'state state-error', note: '연동 시스템이 조치를 거절했습니다.' },
+  failed: { label: '실패(failed)', style: 'state state-error', note: '연동 시스템에서 조치가 실패했습니다.' },
+  unknown: { label: '결과 불명(unknown)', style: 'state state-empty', note: `효과가 없다고도, 성공했다고도 판단하지 마세요. 제공 화면의 ${RESEND_BUTTON}를 직접 눌러 결과를 다시 조회하세요. 자동으로 다시 조회하지 않습니다.` },
+  expired: { label: '확인 기한 지남(expired)', style: 'state state-error', note: '이번 준비로는 집행할 수 없습니다. 조치를 다시 준비하세요.' },
+  error: { label: '요청 처리 안 됨(error)', style: 'state state-error', note: '요청이 처리되지 않았습니다. 이것은 조치 효과가 없다는 확인이 아닙니다.' },
+};
+
+const stringOrNull = (value) => (typeof value === 'string' && value ? value : null);
+
+// 받은 영수증이 현재 사건·조치와 다른 것이면 사유를 돌려준다. 값이 없는 항목은 비교하지 않는다.
+function actionBindingProblem(event, actionId, receipt) {
+  if (!receipt || typeof receipt !== 'object') return '';
+  const eventId = stringOrNull(event && event.id);
+  if (eventId && stringOrNull(receipt.eventId) && receipt.eventId !== eventId) {
+    return `영수증의 사건 ID(${safeDiagValue(receipt.eventId)})가 현재 사건(${eventId})과 다릅니다.`;
+  }
+  if (stringOrNull(actionId) && stringOrNull(receipt.actionId) && receipt.actionId !== actionId) {
+    return `영수증의 조치(${safeDiagValue(receipt.actionId)})가 현재 조치(${actionId})와 다릅니다.`;
+  }
+  return '';
+}
+
+function actionIdentityRows(event, actionId, target, receipt) {
+  const list = node('dl', undefined, 'identity');
+  const present = (term, value) => {
+    const text = stringOrNull(value) || (Number.isInteger(value) ? String(value) : null);
+    if (text) row(list, term, safeDiagValue(text));
+  };
+  const evidenceIds = listOf(event && event.evidence).map((entry) => entry && entry.id).filter((id) => stringOrNull(id));
+  present('사건 ID(event.id)', event && event.id);
+  if (evidenceIds.length > 0) row(list, '근거 ID(evidence)', evidenceIds.map(safeDiagValue).join(', '));
+  present('조치(actionId)', actionId);
+  present('실제 대상(target.id)', target && target.id);
+  present('대상 세대(target.generation)', target && target.generation);
+  present('요청 ID(requestId)', receipt && receipt.requestId);
+  present('영수증 ID(receiptId)', receipt && receipt.receiptId);
+  present('버전(version)', receipt && receipt.version);
+  return list;
+}
+
+function actionView(input) {
+  const { status, event, actionId, target, receipt, observation, message, confirmationExpiresAt, error } = input || {};
+  const root = node('div', undefined, 'student-action');
+  const known = typeof status === 'string' && Object.hasOwn(ACTION_STATUS, status);
+  const mismatch = actionBindingProblem(event, actionId, receipt);
+  const effectConfirmed = status === 'succeeded' && !mismatch && Boolean(observation) && observation.effectApplied === true;
+
+  // 효과 확인이 아닌 succeeded, 알 수 없는 status, 현재 사건과 다른 영수증은 모두 결과 불명으로 처리한다.
+  let shown = known ? status : 'unknown';
+  if (status === 'succeeded' && !effectConfirmed) shown = 'unknown';
+  const view = ACTION_STATUS[shown];
+  root.setAttribute('data-student-action-status', shown);
+
+  root.append(node('p', view.label, view.style));
+  if (!known) {
+    root.append(node('p', `서버가 알 수 없는 상태 값(${safeDiagValue(status)})을 보냈습니다. 성공으로 읽지 마세요.`, 'state state-empty'));
+  } else if (status === 'succeeded' && !effectConfirmed) {
+    root.append(node('p', mismatch
+      ? `succeeded 응답이 현재 요청과 맞지 않아 효과 확인으로 표시하지 않습니다. ${mismatch}`
+      : 'succeeded 응답이지만 observation.effectApplied가 true가 아니어서 효과 확인으로 표시하지 않습니다.', 'state state-empty'));
+  } else if (mismatch) {
+    root.append(node('p', `받은 영수증이 현재 요청과 맞지 않습니다. ${mismatch}`, 'state state-error'));
+  }
+  if (view.note) root.append(node('p', view.note));
+
+  if (shown === 'idle') {
+    root.append(
+      node('p', stringOrNull(message) || '조치 제안은 아직 실행되지 않았습니다.'),
+      node('p', '이 칸에는 조치 준비·집행 버튼이 없습니다. 조치 준비·집행·재조회·취소는 제공 화면의 버튼으로만 합니다. 연동 시스템이 지원하는 조치가 없으면 「조치 준비」 버튼이 나오지 않으며, 지금 기록에서는 정상입니다.'),
+    );
+    return root;
+  }
+
+  if (effectConfirmed) {
+    const list = node('dl', undefined, 'identity');
+    row(list, '관측 시각(observedAt)', textOf(observation.observedAt));
+    row(list, '실제 효과', 'effectApplied: true');
+    row(list, '영수증 ID(receiptId)', textOf(receipt && receipt.receiptId));
+    root.append(list);
+  }
+  if (shown === 'denied' || shown === 'failed') {
+    const text = stringOrNull(message) || stringOrNull(error && error.message);
+    root.append(node('p', text ? `메시지: ${safeDiagValue(text)}` : '메시지: 서버가 사유를 알려 주지 않았습니다.'));
+  }
+  if (shown === 'prepared') {
+    root.append(node('p', `확인 기한(confirmationExpiresAt): ${textOf(confirmationExpiresAt)}`));
+  }
+  if (error && (shown === 'error' || shown === 'expired' || shown === 'unknown')) {
+    root.append(node('p', `오류 코드: ${safeDiagValue(error.code)} · 메시지: ${safeDiagValue(error.message)}`));
+  }
+
+  root.append(actionIdentityRows(event, actionId, target, receipt));
+  root.append(node('p', '이 칸은 상태만 표시합니다. 「조치 화면 취소」는 화면의 요청을 닫을 뿐 이미 서버에 전달된 조치의 효과를 되돌리지 않습니다.', 'student-scope'));
+
+  // 현재 사건·요청에 묶인 표시일 때만 표식을 붙인다.
+  if (known && !mismatch && stringOrNull(event && event.id)) {
+    root.setAttribute('data-student-action-event', event.id);
+    if (stringOrNull(receipt && receipt.requestId)) root.setAttribute('data-student-action-request', receipt.requestId);
+  }
+  return root;
+}
+
 export function createStudentView() {
   return {
     renderIdentity(input) { return identity(input); },
@@ -804,6 +916,6 @@ export function createStudentView() {
     renderVulnerabilities() { return '학생 구현 대기: 정확한 설치 버전·OSV 출처·조회 시각·부분 결과·조회 실패를 구분하세요.'; },
     renderAiConnection(input) { return aiConnection(input); },
     renderExplanation(input) { return explanationView(input); },
-    renderAction() { return '학생 구현 대기: 현재 사건·조치·실제 대상·사람 확인·ACK와 원천 효과·unknown을 구분하세요.'; },
+    renderAction(input) { return actionView(input); },
   };
 }
