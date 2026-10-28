@@ -1027,14 +1027,298 @@ function vulnerabilities(input) {
   return root;
 }
 
-export function createStudentView() {
+// ---------- 관제 대시보드 (보호 현황 맨 위: 상태 카드 네 개, 아래 점검 이력과 기록) ----------
+// 모든 값에 출처 표시를 붙인다. 이 PC에서 직접 잰 값(실측)과 예제·설명용 값(예시)을 섞지 않는다.
+// 제공 파일(index.html, style.css)은 고치지 않는다. 이 앱의 CSP(style-src 'self')가 <style>을 막으므로
+// 스타일은 기존 클래스와 요소의 style 속성(스크립트로 지정)만 쓴다.
+const SOURCE = {
+  measured: { label: '내 PC 실측', hint: '이 PC에서 직접 잰 값입니다.', color: 'var(--accent)', soft: 'var(--accent-soft)' },
+  example: { label: '예시', hint: '예제(demo) 자료 또는 설명용 값입니다. 실제 조회 결과가 아닙니다.', color: 'var(--challenge)', soft: 'var(--challenge-soft)' },
+  live: { label: '실제 연결 응답', hint: '연결된 기존 엔진이나 게이트가 준 값입니다.', color: 'var(--allow)', soft: 'var(--allow-soft)' },
+  unknown: { label: '확인 불가', hint: '값을 얻지 못했습니다. 정상이나 안전이라는 뜻이 아닙니다.', color: 'var(--unknown)', soft: 'var(--unknown-soft)' },
+};
+
+const HISTORY_LIMIT = 12;
+
+const dash = { mode: 'unknown', devices: null, sessions: null, vulnerabilities: null, ai: null, events: null, history: [], measuring: false };
+let dashRoot = null;
+let dashApi = null;
+
+function styled(element, rules) {
+  Object.assign(element.style, rules);
+  return element;
+}
+
+function badge(kind) {
+  const source = SOURCE[kind] || SOURCE.unknown;
+  const element = styled(node('span', source.label), {
+    display: 'inline-block',
+    marginLeft: '6px',
+    padding: '0 8px',
+    border: '1px solid currentColor',
+    borderRadius: '999px',
+    fontSize: '0.72rem',
+    whiteSpace: 'nowrap',
+    background: source.soft,
+    color: source.color,
+  });
+  element.title = source.hint;
+  element.setAttribute('data-source', kind in SOURCE ? kind : 'unknown');
+  return element;
+}
+
+function metric(label, value, kind, warn) {
+  const wrap = styled(node('div'), { margin: '8px 0 0' });
+  wrap.append(styled(node('div', label), { color: 'var(--muted)', fontSize: '0.8rem' }));
+  const line = node('div');
+  line.append(node('strong', value, warn ? 'state-error' : undefined), badge(kind));
+  wrap.append(line);
+  return wrap;
+}
+
+function dashCard(title, ...metrics) {
+  const card = styled(node('section'), {
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    background: 'var(--surface)',
+    padding: '12px',
+  });
+  card.append(styled(node('h3', title), { margin: '0 0 4px', fontSize: '0.95rem' }), ...metrics);
+  return card;
+}
+
+// 연결된 엔진이 준 값이면 실제 연결 응답, 예제 모드면 예시, 그 밖은 확인 불가.
+function engineSource(resource) {
+  if (!resource || resource.status !== 'ok') return 'unknown';
+  if (resource.mode === 'demo') return 'example';
+  return resource.mode === 'connected' ? 'live' : 'unknown';
+}
+
+function connectionCard() {
+  const last = dash.history[0];
+  const modeKind = { demo: 'example', connected: 'live', disconnected: 'measured' }[dash.mode] || 'unknown';
+  const note = dash.mode === 'disconnected'
+    ? '서버가 「엔진 연결 없음」으로 응답한 것을 이 PC에서 확인했습니다.'
+    : dash.mode === 'demo' ? '예제 실행입니다. 아래 카드의 사용자·기기·기록 값은 모두 예시입니다.' : '';
+  const parts = [
+    metric('연결 방식', modeText(dash.mode), modeKind, dash.mode !== 'connected'),
+    metric('로컬 서버 응답 시간(/api/me)', last ? `${last.ms} ms` : '아직 점검 안 함', last ? 'measured' : 'unknown', !last),
+  ];
+  if (note) parts.push(styled(node('p', note), { margin: '8px 0 0', fontSize: '0.8rem', color: 'var(--muted)' }));
+  return dashCard('연결 상태', ...parts);
+}
+
+function deviceSessionCard() {
+  const { devices, sessions } = dash;
+  const parts = [];
+  if (devices && devices.status === 'ok' && Array.isArray(devices.data)) {
+    const kind = engineSource(devices);
+    const bad = devices.data.filter((device) => !device || device.status !== 'compliant').length;
+    parts.push(metric('등록 기기', `${devices.data.length}개`, kind), metric('보안 기준 충족이 아닌 기기', `${bad}개`, kind, bad > 0));
+  } else {
+    parts.push(metric('등록 기기', devices && devices.status === 'loading' ? '불러오는 중' : '확인 불가', 'unknown', true));
+  }
+  if (sessions && sessions.status === 'ok' && Array.isArray(sessions.data)) {
+    const active = sessions.data.filter((session) => session && session.status === 'active').length;
+    parts.push(metric('활성 세션', `${active}개 / 전체 ${sessions.data.length}개`, engineSource(sessions), active === 0));
+  } else {
+    parts.push(metric('활성 세션', sessions && sessions.status === 'loading' ? '불러오는 중' : '확인 불가', 'unknown', true));
+  }
+  return dashCard('기기·세션', ...parts);
+}
+
+function aiCard() {
+  const ai = dash.ai || {};
+  const parts = [];
+  if (ai.status === 'ok' && ai.data && Number.isInteger(ai.data.modelCount)) {
+    const kind = ai.mode === 'demo' ? 'example' : 'live';
+    parts.push(metric('모델 목록 응답', `${ai.data.modelCount}개`, kind), metric('점검 시각', textOf(ai.checkedAt), kind));
+  } else if (ai.status === 'error') {
+    parts.push(metric('연결 점검', `실패 (${safeDiagValue(ai.error && ai.error.code)})`, 'unknown', true));
+  } else if (ai.status === 'loading') {
+    parts.push(metric('연결 점검', '점검 중', 'unknown', true));
+  } else {
+    parts.push(metric('연결 점검', ai.status === 'idle' ? '점검 전' : '확인 불가', 'unknown', true));
+  }
+  parts.push(styled(node('p', '모델 목록 응답은 사건 설명 성공이 아닙니다.'), { margin: '8px 0 0', fontSize: '0.8rem', color: 'var(--muted)' }));
+  return dashCard('AI 연결', ...parts);
+}
+
+function packageCard() {
+  const scan = dash.vulnerabilities || {};
+  const data = scan.data;
+  const parts = [];
+  if (scan.status === 'ok' && data && typeof data === 'object' && Object.hasOwn(SCAN_TEXT, data.status)) {
+    // 잠금 파일 해시가 있으면 package-lock.json을 이 PC에서 실제로 읽은 것이다(예제 엔진과 무관). 없으면 읽지 못한 것이다.
+    const read = hasValue(data.lockfileHash);
+    const kind = read ? 'measured' : 'unknown';
+    const complete = data.status === 'complete';
+    parts.push(metric('조회 상태', SCAN_TEXT[data.status].label, kind, !complete));
+    // packages는 승인되어 조회 대상이 된 패키지만이다. 잠금 파일의 전체 수가 아니며, 나머지는 조회 제외로 따로 온다.
+    const count = read && Array.isArray(data.packages) ? data.packages.length : null;
+    const ex = data.excluded;
+    const excluded = !read || !ex || typeof ex !== 'object' ? null
+      : Number.isInteger(ex.count) ? ex.count
+        : [ex.unapproved, ex.unsupported, ex.invalid].every(Number.isInteger) ? ex.unapproved + ex.unsupported + ex.invalid : null;
+    parts.push(
+      metric('조회 대상 패키지(승인된 것만)', count === null ? '확인 불가' : `${count}개`, count === null ? 'unknown' : kind, count === null),
+      metric('조회 제외', excluded === null ? '확인 불가' : `${excluded}건`, excluded === null ? 'unknown' : kind, excluded === null),
+    );
+    const queried = data.status === 'complete' || data.status === 'partial';
+    if (queried && Array.isArray(data.packages)) {
+      const known = data.packages.filter((pkg) => pkg && pkg.status === 'known_vulnerabilities').length;
+      parts.push(metric('알려진 취약점이 확인된 패키지', `${known}개`, kind, known > 0));
+    } else {
+      parts.push(metric('알려진 취약점이 확인된 패키지', '조회 안 함', 'unknown', true));
+    }
+  } else if (scan.status === 'error') {
+    parts.push(metric('조회', `실패 (${safeDiagValue(scan.error && scan.error.code)})`, 'unknown', true));
+  } else if (scan.status === 'loading') {
+    parts.push(metric('조회', '조회 중', 'unknown', true));
+  } else {
+    parts.push(metric('조회', scan.status === 'idle' ? '조회 전' : '확인 불가', 'unknown', true));
+  }
+  parts.push(styled(node('p', '조회 결과가 없다는 것은 취약점이 없다는 뜻이 아닙니다.'), { margin: '8px 0 0', fontSize: '0.8rem', color: 'var(--muted)' }));
+  return dashCard('설치 패키지', ...parts);
+}
+
+function recordResultText(record) {
+  if (record.reach === 'engine_ok') return '서버 응답 · 엔진 값 수신';
+  if (record.reach === 'server_error') return `서버 응답 · ${record.code}`;
+  return `응답 없음 · ${record.code}`;
+}
+
+function historySection() {
+  const section = styled(node('section'), { margin: '16px 0 0' });
+  const head = styled(node('div'), { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' });
+  head.append(node('h3', '점검 이력'), badge('measured'));
+  const button = node('button', dash.measuring ? '점검 중…' : '지금 점검', 'btn');
+  button.type = 'button';
+  button.disabled = dash.measuring || !dashApi;
+  button.addEventListener('click', () => { measureOnce(); });
+  head.append(button);
+  section.append(head, styled(node('p', '이번 실행 중 로컬 서버(/api/me)에 보낸 요청의 응답 시간입니다. 화면을 닫으면 사라지며 파일로 저장하지 않습니다. 엔진 사건의 시간별 추이는 아닙니다.'), { margin: '4px 0 8px', fontSize: '0.8rem', color: 'var(--muted)' }));
+
+  if (dash.history.length === 0) {
+    section.append(node('p', '아직 점검 기록이 없습니다. 「지금 점검」을 누르면 한 번 잽니다. 자동으로 반복하지 않습니다.', 'state state-empty'));
+    return section;
+  }
+  const top = Math.max(50, ...dash.history.map((record) => record.ms));
+  const missing = dash.history.filter((record) => record.reach === 'no_response').length;
+  // 응답을 받지 못한 요청이 기다린 시간은 응답 시간이 아니므로 통계에서 뺀다.
+  const answered = dash.history.filter((record) => record.reach !== 'no_response').map((record) => record.ms);
+  const stats = answered.length === 0
+    ? '응답한 점검 없음(응답 시간 값 없음)'
+    : `응답한 ${answered.length}회의 응답 시간 최소 ${Math.min(...answered)} ms · 평균 ${Math.round(answered.reduce((sum, ms) => sum + ms, 0) / answered.length)} ms · 최대 ${Math.max(...answered)} ms`;
+  section.append(node('p', `최근 ${dash.history.length}회 · ${stats} · 응답 없음 ${missing}회`));
+
+  const list = styled(node('ul'), { listStyle: 'none', margin: '8px 0 0', padding: '0' });
+  for (const record of dash.history) {
+    const item = styled(node('li'), { margin: '0 0 8px' });
+    item.append(styled(node('div', `${record.time} · ${record.ms} ms · ${recordResultText(record)}`, record.reach === 'no_response' ? 'state-error' : undefined), { fontSize: '0.85rem' }));
+    const track = styled(node('div'), { height: '8px', background: 'var(--unknown-soft)', borderRadius: '4px', overflow: 'hidden' });
+    track.append(styled(node('div'), { height: '8px', width: `${Math.max(2, Math.round((record.ms / top) * 100))}%`, background: record.reach === 'no_response' ? 'var(--deny)' : 'var(--accent)' }));
+    item.append(track);
+    list.append(item);
+  }
+  section.append(list);
+  return section;
+}
+
+function recordsLine() {
+  const events = dash.events;
+  const line = styled(node('p'), { margin: '12px 0 0' });
+  line.append('보안 기록: ');
+  if (events && events.status === 'ok' && Array.isArray(events.data)) {
+    const xdr = events.data.filter((event) => event && event.kind === 'xdr').length;
+    line.append(node('strong', `${events.data.length}건 (XDR 경보 ${xdr}건)`), badge(engineSource(events)));
+  } else {
+    line.append(node('strong', events && events.status === 'loading' ? '불러오는 중' : '확인 불가', 'state-error'), badge('unknown'));
+    line.append(' 기록이 없다는 뜻이 아닙니다.');
+  }
+  return line;
+}
+
+function legendLine() {
+  const line = styled(node('p'), { margin: '0 0 12px', fontSize: '0.8rem', color: 'var(--muted)' });
+  line.append('값 옆의 표시: ');
+  for (const kind of ['measured', 'example', 'live', 'unknown']) line.append(badge(kind), ` ${SOURCE[kind].hint} `);
+  return line;
+}
+
+function buildDashboard() {
+  if (!dashRoot) dashRoot = node('div', undefined, 'student-dashboard');
+  try {
+    const grid = styled(node('div'), { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' });
+    grid.append(connectionCard(), deviceSessionCard(), aiCard(), packageCard());
+    dashRoot.replaceChildren(legendLine(), grid, historySection(), recordsLine());
+  } catch {
+    dashRoot.replaceChildren(node('p', '대시보드를 그리지 못했습니다. 아래 상태 표시는 그대로 동작합니다. 값은 확인 불가입니다.', 'state state-error'));
+  }
+  return dashRoot;
+}
+
+// 로컬 서버가 응답하는 데 걸린 시간을 이 PC에서 한 번 잰다. 자동 반복·자동 재시도는 하지 않는다.
+async function measureOnce() {
+  if (!dashApi || dash.measuring) return;
+  dash.measuring = true;
+  buildDashboard();
+  const started = performance.now();
+  let result = null;
+  try {
+    result = await dashApi.get('/api/me');
+  } catch {
+    result = null;
+  }
+  const ms = Math.round(performance.now() - started);
+  const code = result && result.error ? safeDiagValue(result.error.code) : '값 없음';
+  const localFailure = !result || (result.error && ['NETWORK_ERROR', 'TIMEOUT', 'CANCELLED'].includes(result.error.code));
+  const reach = localFailure ? 'no_response' : result.ok ? 'engine_ok' : 'server_error';
+  dash.history.unshift({ time: new Date().toLocaleTimeString('ko-KR', { hour12: false }), ms, reach, code });
+  dash.history.length = Math.min(dash.history.length, HISTORY_LIMIT);
+  dash.measuring = false;
+  buildDashboard();
+}
+
+// 제공 index.html을 고치지 않고, 상태 카드를 보호 현황의 맨 위(제목 바로 아래)로 옮긴다. 실패하면 제자리에 둔다.
+function placeDashboardCard() {
+  try {
+    const card = document.getElementById('student-status')?.closest('section.card');
+    const heading = card?.parentElement?.querySelector(':scope > h1');
+    if (heading && heading.nextElementSibling !== card) heading.after(card);
+  } catch {
+    // 위치만 못 옮기는 것이며 표시 내용은 그대로다.
+  }
+}
+
+function dashboardStatus(input) {
+  const { devices, sessions, mode } = input || {};
+  dash.mode = mode;
+  dash.devices = devices || null;
+  dash.sessions = sessions || null;
+  const view = statusView(input);
+  view.prepend(buildDashboard());
+  queueMicrotask(placeDashboardCard);
+  return view;
+}
+
+function remember(key, input) {
+  dash[key] = input || null;
+  if (dashRoot) buildDashboard();
+}
+
+export function createStudentView({ api } = {}) {
+  if (api && typeof api.get === 'function' && !dashApi) {
+    dashApi = api;
+    measureOnce();
+  }
   return {
     renderIdentity(input) { return identity(input); },
     renderDecision(input) { return decision(input); },
-    renderEvents(input) { return events(input); },
-    renderStatus(input) { return statusView(input); },
-    renderVulnerabilities(input) { return vulnerabilities(input); },
-    renderAiConnection(input) { return aiConnection(input); },
+    renderEvents(input) { remember('events', input); return events(input); },
+    renderStatus(input) { return dashboardStatus(input); },
+    renderVulnerabilities(input) { remember('vulnerabilities', input); return vulnerabilities(input); },
+    renderAiConnection(input) { remember('ai', input); return aiConnection(input); },
     renderExplanation(input) { return explanationView(input); },
     renderAction(input) { return actionView(input); },
   };
