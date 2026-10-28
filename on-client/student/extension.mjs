@@ -1040,7 +1040,7 @@ const SOURCE = {
 
 const HISTORY_LIMIT = 12;
 
-const dash = { mode: 'unknown', devices: null, sessions: null, vulnerabilities: null, ai: null, events: null, history: [], measuring: false };
+const dash = { mode: 'unknown', devices: null, sessions: null, vulnerabilities: null, ai: null, events: null, history: [], pc: [], measuring: false };
 let dashRoot = null;
 let dashApi = null;
 
@@ -1182,6 +1182,150 @@ function packageCard() {
   return dashCard('설치 패키지', ...parts);
 }
 
+// ----- 내 PC 상태: CPU 사용률·메모리·디스크 남은 공간 (제공 기능 없음, 학생이 추가) -----
+// 서버(/api/pc-status)가 일반 권한으로 읽은 값만 받는다. 이 구역에는 예시 값을 넣지 않는다.
+// 읽지 못한 값은 「확인 불가」와 이유를 보이고, 다른 값이나 이전 값으로 채우지 않는다.
+const PC_REASON = {
+  CPU_UNREADABLE: '이 PC에서 CPU 시간을 읽지 못했습니다.',
+  CPU_NO_SAMPLE: '측정 구간 동안 CPU 시간 변화가 없어 사용률을 계산하지 못했습니다.',
+  MEMORY_UNREADABLE: '이 PC의 메모리 값을 읽지 못했습니다.',
+  DISK_UNREADABLE: '이 PC의 디스크 값을 읽지 못했습니다.',
+  PERMISSION_DENIED: '일반 권한으로는 읽을 수 없습니다. 관리자 권한은 쓰지 않습니다.',
+  NETWORK_ERROR: '로컬 서버에 연결할 수 없습니다.',
+  TIMEOUT: '서버 응답 시간이 초과됐습니다.',
+  NOT_FOUND: '켜져 있는 서버가 이 기능을 모릅니다. 서버를 끄고 다시 켜세요.',
+  INVALID_RESPONSE: '서버 응답 형식이 맞지 않아 값을 쓰지 않았습니다.',
+};
+
+const PC_TOOL = { darwin: '활동 모니터', win32: '작업 관리자' };
+
+const isNumber = (value) => typeof value === 'number' && Number.isFinite(value);
+
+function pcReasonText(code) {
+  return Object.hasOwn(PC_REASON, code) ? PC_REASON[code] : `이유를 알 수 없습니다(코드: ${safeDiagValue(code)}).`;
+}
+
+function pcTime(iso) {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? '확인 불가' : date.toLocaleString('ko-KR', { hour12: false });
+}
+
+// 값과 잰 시각이 모두 올바를 때만 쓴다. 하나라도 어긋나면 값은 버리고 확인 불가로 둔다.
+function pcMetric(raw, read) {
+  if (raw && raw.status === 'ok' && Number.isFinite(Date.parse(raw.measuredAt))) {
+    const values = read(raw);
+    if (values) return { ok: true, ...values, measuredAt: raw.measuredAt, scope: textOf(raw.scope), source: textOf(raw.source) };
+    return { ok: false, reason: 'INVALID_RESPONSE' };
+  }
+  const reason = raw && raw.status === 'unavailable' && typeof raw.reason === 'string' ? raw.reason : 'INVALID_RESPONSE';
+  return { ok: false, reason, measuredAt: raw && Number.isFinite(Date.parse(raw.measuredAt)) ? raw.measuredAt : null };
+}
+
+const PC_COLUMNS = [
+  { key: 'cpu', label: 'CPU 사용률', unit: '%', deltaUnit: '%p', pick: (m) => m.value, text: (m) => `${m.value} %`,
+    read: (raw) => (isNumber(raw.value) && raw.unit === '%' ? { value: raw.value, cores: raw.cores } : null) },
+  { key: 'memory', label: '메모리 사용', unit: '%', deltaUnit: '%p', pick: (m) => m.usedPercent,
+    text: (m) => `${m.usedPercent} % (사용 ${m.usedGiB} GiB / 전체 ${m.totalGiB} GiB, 여유 ${m.freeGiB} GiB)`,
+    read: (raw) => ([raw.usedPercent, raw.usedGiB, raw.freeGiB, raw.totalGiB].every(isNumber)
+      ? { usedPercent: raw.usedPercent, usedGiB: raw.usedGiB, freeGiB: raw.freeGiB, totalGiB: raw.totalGiB } : null) },
+  { key: 'disk', label: '디스크 남은 공간', unit: 'GiB', deltaUnit: 'GiB', pick: (m) => m.freeGiB,
+    text: (m) => `${m.freeGiB} GiB (전체 ${m.totalGiB} GiB)`,
+    read: (raw) => (isNumber(raw.freeGiB) && isNumber(raw.totalGiB) ? { freeGiB: raw.freeGiB, totalGiB: raw.totalGiB } : null) },
+];
+
+// 로컬 서버에서 이 PC의 값을 한 번 읽어 최근 12회까지 쌓는다. 파일로 저장하지 않는다.
+async function measurePc() {
+  let result = null;
+  try {
+    result = await dashApi.get('/api/pc-status');
+  } catch {
+    result = null;
+  }
+  const data = result && result.ok && result.data && typeof result.data === 'object' ? result.data : null;
+  const failure = data ? null : (result && result.error ? safeDiagValue(result.error.code) : 'NETWORK_ERROR');
+  const sample = { at: new Date().toISOString(), platform: data && typeof data.platform === 'string' ? data.platform : null };
+  for (const column of PC_COLUMNS) {
+    sample[column.key] = data ? pcMetric(data[column.key], column.read) : { ok: false, reason: failure, measuredAt: null };
+  }
+  dash.pc.unshift(sample);
+  dash.pc.length = Math.min(dash.pc.length, HISTORY_LIMIT);
+}
+
+function pcLatestLine(column, metric) {
+  const wrap = styled(node('div'), { margin: '8px 0 0' });
+  wrap.append(styled(node('div', column.label), { color: 'var(--muted)', fontSize: '0.8rem' }));
+  const line = node('div');
+  const small = { fontSize: '0.8rem', color: 'var(--muted)' };
+  if (metric.ok) {
+    line.append(node('strong', column.text(metric)), badge('measured'));
+    wrap.append(line, styled(node('div', `잰 시각 ${pcTime(metric.measuredAt)} · 집계 범위: ${metric.scope} · 출처: ${metric.source}`), small));
+  } else {
+    line.append(node('strong', '확인 불가', 'state-error'), badge('unknown'));
+    const tried = metric.measuredAt ? ` · 시도한 시각 ${pcTime(metric.measuredAt)}` : '';
+    wrap.append(line, styled(node('div', `이유: ${pcReasonText(metric.reason)}${tried}`), small));
+  }
+  return wrap;
+}
+
+// 직전 점검 대비 증감. 둘 중 하나라도 읽지 못했으면 계산하지 않고 이유를 적는다.
+function pcDeltaText(column, now, before) {
+  if (!now.ok) return '이번 값 확인 불가';
+  if (!before) return '직전 점검 없음';
+  if (!before.ok) return '직전 값 확인 불가';
+  const diff = Math.round((column.pick(now) - column.pick(before)) * 10) / 10;
+  if (diff === 0) return `변화 없음(±0 ${column.deltaUnit})`;
+  return `${diff > 0 ? '▲ +' : '▼ −'}${Math.abs(diff)} ${column.deltaUnit}`;
+}
+
+function pcTrendTable() {
+  const cell = { padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)', verticalAlign: 'top' };
+  const table = styled(node('table'), { width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', marginTop: '8px' });
+  const head = node('tr');
+  head.append(styled(node('th', '점검 시각'), cell));
+  for (const column of PC_COLUMNS) head.append(styled(node('th', `${column.label}(${column.unit}) · 직전 대비`), cell));
+  const thead = node('thead');
+  thead.append(head);
+  const body = node('tbody');
+  dash.pc.forEach((sample, index) => {
+    const row = node('tr');
+    row.append(styled(node('td', pcTime(sample.at)), cell));
+    for (const column of PC_COLUMNS) {
+      const metric = sample[column.key];
+      const td = styled(node('td'), cell);
+      if (metric.ok) {
+        td.append(node('strong', `${column.pick(metric)} ${column.unit}`));
+        td.append(styled(node('div', `잰 시각 ${pcTime(metric.measuredAt)}`), { fontSize: '0.75rem', color: 'var(--muted)' }));
+      } else {
+        td.append(node('strong', '확인 불가', 'state-error'));
+        td.append(styled(node('div', pcReasonText(metric.reason)), { fontSize: '0.75rem', color: 'var(--muted)' }));
+      }
+      td.append(styled(node('div', pcDeltaText(column, metric, dash.pc[index + 1] && dash.pc[index + 1][column.key])), { fontSize: '0.75rem' }));
+      row.append(td);
+    }
+    body.append(row);
+  });
+  table.append(thead, body);
+  return table;
+}
+
+function pcSection() {
+  const section = styled(node('section'), { margin: '16px 0 0' });
+  const last = dash.pc[0];
+  const anyOk = last && PC_COLUMNS.some((column) => last[column.key].ok);
+  const head = styled(node('div'), { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' });
+  head.append(node('h3', '내 PC 상태'), badge(anyOk ? 'measured' : 'unknown'));
+  section.append(head);
+  const tool = last && PC_TOOL[last.platform] ? PC_TOOL[last.platform] : '운영체제의 시스템 모니터';
+  section.append(styled(node('p', `이 PC에서 방금 잰 값입니다. 일반 권한으로만 읽으며 관리자 권한은 쓰지 않습니다. 「지금 점검」을 누를 때만 잽니다. 값이 맞는지는 가까운 시각에 ${tool}의 같은 단위 값과 비교하세요. 다르면 잰 시각과 집계 범위를 먼저 확인합니다. 이 구역에는 예시 값이 없습니다.`), { margin: '4px 0 8px', fontSize: '0.8rem', color: 'var(--muted)' }));
+  if (!last) {
+    section.append(node('p', dash.measuring ? '측정 중…' : '아직 측정하지 않았습니다. 「지금 점검」을 누르면 한 번 잽니다.', 'state state-empty'));
+    return section;
+  }
+  for (const column of PC_COLUMNS) section.append(pcLatestLine(column, last[column.key]));
+  section.append(styled(node('h4', `추이 비교 (최근 ${dash.pc.length}회, 최신이 위)`), { margin: '16px 0 0' }), pcTrendTable());
+  return section;
+}
+
 function recordResultText(record) {
   if (record.reach === 'engine_ok') return '서버 응답 · 엔진 값 수신';
   if (record.reach === 'server_error') return `서버 응답 · ${record.code}`;
@@ -1251,7 +1395,7 @@ function buildDashboard() {
   try {
     const grid = styled(node('div'), { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' });
     grid.append(connectionCard(), deviceSessionCard(), aiCard(), packageCard());
-    dashRoot.replaceChildren(legendLine(), grid, historySection(), recordsLine());
+    dashRoot.replaceChildren(legendLine(), grid, historySection(), pcSection(), recordsLine());
   } catch {
     dashRoot.replaceChildren(node('p', '대시보드를 그리지 못했습니다. 아래 상태 표시는 그대로 동작합니다. 값은 확인 불가입니다.', 'state state-error'));
   }
@@ -1276,6 +1420,7 @@ async function measureOnce() {
   const reach = localFailure ? 'no_response' : result.ok ? 'engine_ok' : 'server_error';
   dash.history.unshift({ time: new Date().toLocaleTimeString('ko-KR', { hour12: false }), ms, reach, code });
   dash.history.length = Math.min(dash.history.length, HISTORY_LIMIT);
+  await measurePc();
   dash.measuring = false;
   buildDashboard();
 }
