@@ -1040,7 +1040,9 @@ const SOURCE = {
 
 const HISTORY_LIMIT = 12;
 
-const dash = { mode: 'unknown', devices: null, sessions: null, vulnerabilities: null, ai: null, events: null, history: [], pc: [], sys: [], measuring: false };
+const dash = { mode: 'unknown', devices: null, sessions: null, vulnerabilities: null, ai: null, events: null, history: [], pc: [], sys: [],
+  run: { history: newRun(), pc: newRun(), sys: newRun() } };
+function newRun() { return { state: 'idle', failures: [], finishedAt: null }; }
 let dashRoot = null;
 let dashApi = null;
 
@@ -1283,6 +1285,8 @@ function pcTrendTable() {
   const head = node('tr');
   head.append(styled(node('th', '점검 시각'), cell));
   for (const column of PC_COLUMNS) head.append(styled(node('th', `${column.label}(${column.unit}) · 직전 대비`), cell));
+  for (const th of head.children) th.setAttribute('scope', 'col');
+  table.setAttribute('aria-label', '내 PC 상태 추이 비교 표(최신이 위)');
   const thead = node('thead');
   thead.append(head);
   const body = node('tbody');
@@ -1309,18 +1313,14 @@ function pcTrendTable() {
 }
 
 function pcSection() {
-  const section = styled(node('section'), { margin: '16px 0 0' });
   const last = dash.pc[0];
   const anyOk = last && PC_COLUMNS.some((column) => last[column.key].ok);
-  const head = styled(node('div'), { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' });
-  head.append(node('h3', '내 PC 상태'), badge(anyOk ? 'measured' : 'unknown'));
-  section.append(head);
+  const section = featureSection('pc', '내 PC 상태', anyOk ? 'measured' : 'unknown');
   const tool = last && PC_TOOL[last.platform] ? PC_TOOL[last.platform] : '운영체제의 시스템 모니터';
-  section.append(styled(node('p', `이 PC에서 방금 잰 값입니다. 일반 권한으로만 읽으며 관리자 권한은 쓰지 않습니다. 「지금 점검」을 누를 때만 잽니다. 값이 맞는지는 가까운 시각에 ${tool}의 같은 단위 값과 비교하세요. 다르면 잰 시각과 집계 범위를 먼저 확인합니다. 이 구역에는 예시 값이 없습니다.`), { margin: '4px 0 8px', fontSize: '0.8rem', color: 'var(--muted)' }));
-  if (!last) {
-    section.append(node('p', dash.measuring ? '측정 중…' : '아직 측정하지 않았습니다. 「지금 점검」을 누르면 한 번 잽니다.', 'state state-empty'));
-    return section;
-  }
+  section.append(styled(node('p', `이 PC에서 방금 잰 값입니다. 일반 권한으로만 읽으며 관리자 권한은 쓰지 않습니다. 「다시 조회」를 누를 때만 잽니다. 값이 맞는지는 가까운 시각에 ${tool}의 같은 단위 값과 비교하세요. 다르면 잰 시각과 집계 범위를 먼저 확인합니다. 이 구역에는 예시 값이 없습니다.`), { margin: '4px 0 8px', fontSize: '0.8rem', color: 'var(--muted)' }));
+  const status = runStatus('pc');
+  if (status) section.append(status);
+  if (!last) return section;
   for (const column of PC_COLUMNS) section.append(pcLatestLine(column, last[column.key]));
   section.append(styled(node('h4', `추이 비교 (최근 ${dash.pc.length}회, 최신이 위)`), { margin: '16px 0 0' }), pcTrendTable());
   return section;
@@ -1487,6 +1487,8 @@ function sysTrendTable() {
   const table = styled(node('table'), { width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', marginTop: '8px' });
   const head = node('tr');
   for (const title of ['점검 시각', '네트워크 연결', '방화벽(켜짐 프로필)', 'System 경고·오류', 'Application 경고·오류']) head.append(styled(node('th', title), cell));
+  for (const th of head.children) th.setAttribute('scope', 'col');
+  table.setAttribute('aria-label', 'PC 연결·방화벽·Windows 기록 추이 비교 표(최신이 위)');
   const thead = node('thead');
   thead.append(head);
   const body = node('tbody');
@@ -1531,15 +1533,13 @@ function sysTrendTable() {
 }
 
 function systemSection() {
-  const section = styled(node('section'), { margin: '16px 0 0' });
   const last = dash.sys[0];
   const anyOk = last && (last.network.ok || last.firewall.ok || last.events.ok);
-  const head = styled(node('div'), { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' });
-  head.append(node('h3', 'PC 연결·방화벽·Windows 기록'), badge(anyOk ? 'measured' : 'unknown'));
-  section.append(head);
-  section.append(styled(node('p', `이 PC에서 방금 일반 권한으로 읽기만 한 값입니다. 방화벽과 보안 설정은 바꾸지 않고, 관리자 권한이 필요한 항목은 「확인 불가」와 이유로 보입니다. 「지금 점검」을 누를 때만 읽습니다. ${NOT_ATTACK_NOTE} 이 구역에는 예시 값이 없습니다.`), { margin: '4px 0 8px', fontSize: '0.8rem', color: 'var(--muted)' }));
+  const section = featureSection('sys', 'PC 연결·방화벽·Windows 기록', anyOk ? 'measured' : 'unknown');
+  section.append(styled(node('p', `이 PC에서 방금 일반 권한으로 읽기만 한 값입니다. 방화벽과 보안 설정은 바꾸지 않고, 관리자 권한이 필요한 항목은 「확인 불가」와 이유로 보입니다. 「다시 조회」를 누를 때만 읽습니다. ${NOT_ATTACK_NOTE} 이 구역에는 예시 값이 없습니다.`), { margin: '4px 0 8px', fontSize: '0.8rem', color: 'var(--muted)' }));
+  const status = runStatus('sys');
+  if (status) section.append(status);
   if (!last) {
-    section.append(node('p', dash.measuring ? '읽는 중…' : '아직 읽지 않았습니다. 「지금 점검」을 누르면 한 번 읽습니다.', 'state state-empty'));
     section.append(sdpLine());
     return section;
   }
@@ -1550,6 +1550,215 @@ function systemSection() {
   return section;
 }
 
+// ----- 4일차: 핵심 기능 3가지, 항목별 「다시 조회」·대기 표시·실패 안내, 키보드 사용 -----
+// 제공 화면의 「다시 불러오기」·「AI 연결 점검」·「설치 패키지 조회」와 겹치지 않게, 학생이 더한 세 기능에만 붙인다.
+// 조회에 실패해도 예시 값이나 이전 값으로 채우지 않는다. 실패한 항목과 다음에 할 일만 보인다.
+const CORE = [
+  { key: 'history', title: '점검 이력', what: '이 앱의 서버가 응답하는 데 걸린 시간(밀리초)을 잽니다.' },
+  { key: 'pc', title: '내 PC 상태', what: '이 PC의 CPU 사용률, 메모리 사용, 디스크 남은 공간을 잽니다.' },
+  { key: 'sys', title: 'PC 연결·방화벽·Windows 기록', what: '네트워크 연결, 방화벽 켜짐 여부, 최근 24시간 Windows 경고·오류 건수를 읽기만 합니다.' },
+];
+
+const NEXT_STEP = {
+  NETWORK_ERROR: '터미널에서 서버(npm start)가 켜져 있는지 확인하세요. 꺼져 있으면 다시 켠 뒤 「다시 조회」를 누르세요.',
+  TIMEOUT: '잠시 뒤 「다시 조회」를 누르세요. 계속 같으면 서버를 끄고 다시 켜세요.',
+  NOT_FOUND: '켜져 있는 서버가 이 기능을 모릅니다. 서버를 끄고 다시 켠 뒤 「다시 조회」를 누르세요.',
+  PERMISSION_DENIED: '일반 권한으로는 읽을 수 없는 항목입니다. 관리자 권한은 쓰지 않으니 이 항목은 「확인 불가」로 두고 나머지를 확인하세요.',
+  UNSUPPORTED_OS: '이 항목은 Windows PC에서만 읽습니다. Windows PC에서 서버를 켜고 「다시 조회」를 누르세요.',
+  COMMAND_UNAVAILABLE: 'Windows PowerShell을 찾지 못했습니다. Windows가 정상인지 확인한 뒤 「다시 조회」를 누르세요.',
+  INVALID_RESPONSE: '서버가 이상한 값을 돌려줘 쓰지 않았습니다. 「다시 조회」를 한 번 더 누르고, 같으면 서버를 끄고 다시 켜세요.',
+  OUTPUT_INVALID: '읽은 값의 형식이 맞지 않아 쓰지 않았습니다. 「다시 조회」를 한 번 더 누르고, 같으면 서버를 끄고 다시 켜세요.',
+  CPU_UNREADABLE: '이 PC에서 값을 읽지 못했습니다. 「다시 조회」를 눌러 보고, 계속되면 이 항목은 「확인 불가」로 기록하세요.',
+  CPU_NO_SAMPLE: '측정 구간에 변화가 없어 계산하지 못했습니다. 「다시 조회」를 한 번 더 누르세요.',
+  MEMORY_UNREADABLE: '이 PC에서 값을 읽지 못했습니다. 「다시 조회」를 눌러 보고, 계속되면 이 항목은 「확인 불가」로 기록하세요.',
+  DISK_UNREADABLE: '이 PC에서 값을 읽지 못했습니다. 「다시 조회」를 눌러 보고, 계속되면 이 항목은 「확인 불가」로 기록하세요.',
+  UNREADABLE: '이 PC에서 값을 읽지 못했습니다. 「다시 조회」를 눌러 보고, 계속되면 이 항목은 「확인 불가」로 기록하세요.',
+};
+const NEXT_STEP_DEFAULT = '「다시 조회」를 눌러 보세요. 계속되면 이유 코드를 적어 두세요.';
+
+let dashRefs = {};
+let dashLive = null;
+let pendingRuns = 0;
+let runQueue = Promise.resolve();
+
+const nextStepText = (code) => (Object.hasOwn(NEXT_STEP, code) ? NEXT_STEP[code] : NEXT_STEP_DEFAULT);
+const coreTitle = (key) => CORE.find((feature) => feature.key === key).title;
+const isBusy = (key) => dash.run[key].state === 'loading' || dash.run[key].state === 'queued';
+
+// 화면을 다시 그려도 읽어 주는 알림 자리는 그대로 두어야 스크린리더가 변경을 알린다.
+function liveRegion() {
+  if (!dashLive) {
+    dashLive = styled(node('div'), { position: 'absolute', width: '1px', height: '1px', margin: '-1px', padding: '0', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: '0' });
+    dashLive.setAttribute('role', 'status');
+    dashLive.setAttribute('aria-live', 'polite');
+    dashLive.setAttribute('aria-atomic', 'true');
+  }
+  return dashLive;
+}
+
+function announceRun(key) {
+  const run = dash.run[key];
+  const title = coreTitle(key);
+  let text = '';
+  if (run.state === 'loading') text = `${title}: 새로 읽는 중입니다.`;
+  else if (run.state === 'queued') text = `${title}: 대기 중입니다. 앞의 조회가 끝나면 읽습니다.`;
+  else if (run.state === 'ok') text = `${title}: 조회에 성공했습니다.`;
+  else if (run.state === 'error') text = `${title}: 조회에 실패했습니다. 실패한 항목 ${run.failures.map((failure) => failure.item).join(', ')}. 다음에 할 일: ${nextStepText(run.failures[0].code)}`;
+  liveRegion().textContent = text;
+}
+
+function runStatusText(key) {
+  const run = dash.run[key];
+  if (run.state === 'loading') return '새로 읽는 중…';
+  if (run.state === 'queued') return '대기 중 · 앞의 조회가 끝나면 읽습니다';
+  if (run.state === 'ok') return `성공 · 잰 시각 ${pcTime(run.finishedAt)}`;
+  if (run.state === 'error') return `실패 ${run.failures.length}건: ${run.failures.map((failure) => failure.item).join(', ')}`;
+  return dashApi ? '아직 읽지 않음' : '서버 연결이 없어 읽을 수 없음';
+}
+
+// 구역 머리: 제목(바로 가기가 초점을 옮기는 곳), 출처 표시, 「다시 조회」 버튼, 읽는 중 표시.
+function featureSection(key, title, kind) {
+  const section = styled(node('section'), { margin: '16px 0 0' });
+  section.setAttribute('aria-busy', String(isBusy(key)));
+  const head = styled(node('div'), { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' });
+  const heading = node('h3', title);
+  heading.tabIndex = -1;
+  heading.setAttribute('data-focus-key', `title-${key}`);
+  dashRefs[key] = heading;
+  const button = node('button', '다시 조회', 'btn');
+  button.type = 'button';
+  button.setAttribute('data-focus-key', `retry-${key}`);
+  button.setAttribute('aria-label', `${title} 다시 조회`);
+  // disabled를 쓰면 키보드 초점이 사라지므로 aria-disabled로 막는다.
+  const blocked = isBusy(key) || !dashApi;
+  button.setAttribute('aria-disabled', String(blocked));
+  if (blocked) Object.assign(button.style, { opacity: '0.55', cursor: 'not-allowed' });
+  button.addEventListener('click', () => {
+    if (button.getAttribute('aria-disabled') === 'true') return;
+    runFeature(key);
+  });
+  head.append(heading, badge(kind), button);
+  if (isBusy(key)) head.append(styled(node('span', runStatusText(key), 'state state-loading'), { padding: '2px 8px' }));
+  section.append(head);
+  return section;
+}
+
+// 읽는 중·대기는 머리 옆에 보이므로 여기서는 나머지 상태만 그린다.
+function runStatus(key) {
+  const run = dash.run[key];
+  if (run.state === 'ok') return styled(node('p', `마지막 조회 성공 · ${pcTime(run.finishedAt)}`), { margin: '0 0 8px', fontSize: '0.8rem', color: 'var(--muted)' });
+  if (run.state === 'idle') return node('p', dashApi ? '아직 읽지 않았습니다. 「다시 조회」를 누르면 한 번 읽습니다. 자동으로 반복하지 않습니다.' : '서버 연결이 없어 읽을 수 없습니다. 서버를 켠 뒤 화면을 다시 여세요.', 'state state-empty');
+  if (run.state !== 'error') return null;
+  const box = node('div', undefined, 'state state-error');
+  box.setAttribute('role', 'group');
+  box.setAttribute('aria-label', `${coreTitle(key)} 조회 실패 안내`);
+  box.append(node('strong', `조회에 실패한 항목 ${run.failures.length}건`));
+  const list = styled(node('ul'), { margin: '4px 0 8px', paddingLeft: '20px' });
+  for (const failure of run.failures) list.append(node('li', `${failure.item} — 이유: ${sysReasonText(failure.code)}`));
+  box.append(list, node('strong', '다음에 할 일'));
+  const steps = styled(node('ul'), { margin: '4px 0 0', paddingLeft: '20px' });
+  for (const text of new Set(run.failures.map((failure) => nextStepText(failure.code)))) steps.append(node('li', text));
+  box.append(steps, styled(node('p', '실패한 항목에는 예시 값이나 이전 값을 대신 보여 주지 않고 「확인 불가」로 둡니다.'), { margin: '8px 0 0', fontSize: '0.8rem' }));
+  return box;
+}
+
+// 맨 위 카드 바로 아래: 학생이 더한 핵심 기능 3가지의 상태를 한눈에 보고 해당 구역으로 이동한다.
+function coreSection() {
+  const section = styled(node('section'), { margin: '16px 0 0' });
+  section.append(node('h3', '핵심 기능 3가지'));
+  section.append(styled(node('p', '아래 세 기능은 직접 더한 것입니다. 각 구역의 「다시 조회」는 그 기능만 다시 읽습니다. 제공 화면의 「다시 불러오기」·「AI 연결 점검」·「설치 패키지 조회」와는 따로 동작합니다.'), { margin: '4px 0 8px', fontSize: '0.8rem', color: 'var(--muted)' }));
+  const list = styled(node('ol'), { listStyle: 'none', margin: '0', padding: '0', display: 'grid', gap: '8px' });
+  CORE.forEach((feature, index) => {
+    const run = dash.run[feature.key];
+    const item = styled(node('li'), { border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface)', padding: '8px 12px' });
+    const line = styled(node('div'), { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' });
+    const go = node('button', `${index + 1}. ${feature.title} 바로 가기`, 'btn');
+    go.type = 'button';
+    go.setAttribute('data-focus-key', `go-${feature.key}`);
+    go.addEventListener('click', () => {
+      const target = dashRefs[feature.key];
+      if (target && target.scrollIntoView) target.scrollIntoView({ block: 'start' });
+      if (target && target.focus) target.focus();
+    });
+    const kind = run.state === 'ok' ? 'measured' : 'unknown';
+    line.append(go, node('strong', runStatusText(feature.key), run.state === 'error' ? 'state-error' : undefined), badge(kind));
+    item.append(line, styled(node('div', feature.what), { margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--muted)' }));
+    list.append(item);
+  });
+  section.append(list);
+  return section;
+}
+
+// 로컬 서버가 응답하는 데 걸린 시간을 이 PC에서 한 번 잰다. 자동 반복·자동 재시도는 하지 않는다.
+async function measureHistory() {
+  const started = performance.now();
+  let result = null;
+  try {
+    result = await dashApi.get('/api/me');
+  } catch {
+    result = null;
+  }
+  const ms = Math.round(performance.now() - started);
+  const code = result && result.error ? safeDiagValue(result.error.code) : '값 없음';
+  const localFailure = !result || (result.error && ['NETWORK_ERROR', 'TIMEOUT', 'CANCELLED'].includes(result.error.code));
+  const reach = localFailure ? 'no_response' : result.ok ? 'engine_ok' : 'server_error';
+  const record = { time: new Date().toLocaleTimeString('ko-KR', { hour12: false }), ms, reach, code };
+  dash.history.unshift(record);
+  dash.history.length = Math.min(dash.history.length, HISTORY_LIMIT);
+  return record;
+}
+
+function pcFailures(sample) {
+  return PC_COLUMNS.filter((column) => !sample[column.key].ok).map((column) => ({ item: column.label, code: sample[column.key].reason }));
+}
+
+function sysFailures(sample) {
+  const out = [];
+  if (!sample.network.ok) out.push({ item: '네트워크 연결', code: sample.network.reason });
+  else if (!sample.network.adapters.ok) out.push({ item: '유선·무선 구분', code: sample.network.adapters.reason });
+  if (!sample.firewall.ok) out.push({ item: '방화벽 설정', code: sample.firewall.reason });
+  if (!sample.events.ok) out.push({ item: 'Windows 경고·오류(System·Application)', code: sample.events.reason });
+  else for (const log of SYS_LOGS) if (!sample.events.logs[log].ok) out.push({ item: `Windows ${log} 기록`, code: sample.events.logs[log].reason });
+  return out;
+}
+
+const WORKERS = {
+  history: async () => {
+    const record = await measureHistory();
+    return record.reach === 'no_response' ? [{ item: '로컬 서버 응답(/api/me)', code: record.code }] : [];
+  },
+  pc: async () => { await measurePc(); return pcFailures(dash.pc[0]); },
+  sys: async () => { await measureSystem(); return sysFailures(dash.sys[0]); },
+};
+
+// 한 번에 하나씩 순서대로 읽는다. 동시에 읽으면 PowerShell 실행이 CPU 측정 구간(250 ms)에 섞여 CPU 사용률이 크게 부풀려진다.
+function runFeature(key) {
+  const run = dash.run[key];
+  if (!dashApi || isBusy(key)) return runQueue;
+  run.state = pendingRuns === 0 ? 'loading' : 'queued';
+  pendingRuns += 1;
+  announceRun(key);
+  buildDashboard();
+  runQueue = runQueue.then(async () => {
+    run.state = 'loading';
+    announceRun(key);
+    buildDashboard();
+    let failures;
+    try {
+      failures = await WORKERS[key]();
+    } catch {
+      failures = [{ item: coreTitle(key), code: 'UNREADABLE' }];
+    }
+    run.failures = failures;
+    run.finishedAt = new Date().toISOString();
+    run.state = failures.length > 0 ? 'error' : 'ok';
+    pendingRuns -= 1;
+    announceRun(key);
+    buildDashboard();
+  });
+  return runQueue;
+}
+
 function recordResultText(record) {
   if (record.reach === 'engine_ok') return '서버 응답 · 엔진 값 수신';
   if (record.reach === 'server_error') return `서버 응답 · ${record.code}`;
@@ -1557,20 +1766,11 @@ function recordResultText(record) {
 }
 
 function historySection() {
-  const section = styled(node('section'), { margin: '16px 0 0' });
-  const head = styled(node('div'), { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' });
-  head.append(node('h3', '점검 이력'), badge('measured'));
-  const button = node('button', dash.measuring ? '점검 중…' : '지금 점검', 'btn');
-  button.type = 'button';
-  button.disabled = dash.measuring || !dashApi;
-  button.addEventListener('click', () => { measureOnce(); });
-  head.append(button);
-  section.append(head, styled(node('p', '이번 실행 중 로컬 서버(/api/me)에 보낸 요청의 응답 시간입니다. 화면을 닫으면 사라지며 파일로 저장하지 않습니다. 엔진 사건의 시간별 추이는 아닙니다.'), { margin: '4px 0 8px', fontSize: '0.8rem', color: 'var(--muted)' }));
-
-  if (dash.history.length === 0) {
-    section.append(node('p', '아직 점검 기록이 없습니다. 「지금 점검」을 누르면 한 번 잽니다. 자동으로 반복하지 않습니다.', 'state state-empty'));
-    return section;
-  }
+  const section = featureSection('history', '점검 이력', 'measured');
+  section.append(styled(node('p', '이번 실행 중 로컬 서버(/api/me)에 보낸 요청의 응답 시간입니다. 「다시 조회」를 누를 때만 한 번 잽니다. 화면을 닫으면 사라지며 파일로 저장하지 않습니다. 엔진 사건의 시간별 추이는 아닙니다.'), { margin: '4px 0 8px', fontSize: '0.8rem', color: 'var(--muted)' }));
+  const status = runStatus('history');
+  if (status) section.append(status);
+  if (dash.history.length === 0) return section;
   const top = Math.max(50, ...dash.history.map((record) => record.ms));
   const missing = dash.history.filter((record) => record.reach === 'no_response').length;
   // 응답을 받지 못한 요청이 기다린 시간은 응답 시간이 아니므로 통계에서 뺀다.
@@ -1616,39 +1816,22 @@ function legendLine() {
 
 function buildDashboard() {
   if (!dashRoot) dashRoot = node('div', undefined, 'student-dashboard');
+  // 키보드로 누른 버튼의 초점이 화면을 다시 그린 뒤에도 같은 자리에 남게 한다.
+  const active = document.activeElement;
+  const focusKey = active && active.getAttribute && dashRoot.contains(active) ? active.getAttribute('data-focus-key') : null;
+  dashRefs = {};
   try {
     const grid = styled(node('div'), { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' });
     grid.append(connectionCard(), deviceSessionCard(), aiCard(), packageCard());
-    dashRoot.replaceChildren(legendLine(), grid, historySection(), pcSection(), systemSection(), recordsLine());
+    dashRoot.replaceChildren(liveRegion(), legendLine(), grid, coreSection(), historySection(), pcSection(), systemSection(), recordsLine());
   } catch {
     dashRoot.replaceChildren(node('p', '대시보드를 그리지 못했습니다. 아래 상태 표시는 그대로 동작합니다. 값은 확인 불가입니다.', 'state state-error'));
   }
-  return dashRoot;
-}
-
-// 로컬 서버가 응답하는 데 걸린 시간을 이 PC에서 한 번 잰다. 자동 반복·자동 재시도는 하지 않는다.
-async function measureOnce() {
-  if (!dashApi || dash.measuring) return;
-  dash.measuring = true;
-  buildDashboard();
-  const started = performance.now();
-  let result = null;
-  try {
-    result = await dashApi.get('/api/me');
-  } catch {
-    result = null;
+  if (focusKey) {
+    const target = dashRoot.querySelector(`[data-focus-key="${focusKey}"]`);
+    if (target && target.focus) target.focus({ preventScroll: true });
   }
-  const ms = Math.round(performance.now() - started);
-  const code = result && result.error ? safeDiagValue(result.error.code) : '값 없음';
-  const localFailure = !result || (result.error && ['NETWORK_ERROR', 'TIMEOUT', 'CANCELLED'].includes(result.error.code));
-  const reach = localFailure ? 'no_response' : result.ok ? 'engine_ok' : 'server_error';
-  dash.history.unshift({ time: new Date().toLocaleTimeString('ko-KR', { hour12: false }), ms, reach, code });
-  dash.history.length = Math.min(dash.history.length, HISTORY_LIMIT);
-  // 순서대로 읽는다. 동시에 읽으면 PowerShell 실행이 CPU 측정 구간(250 ms)에 섞여 CPU 사용률이 크게 부풀려진다.
-  await measurePc();
-  await measureSystem();
-  dash.measuring = false;
-  buildDashboard();
+  return dashRoot;
 }
 
 // 제공 index.html을 고치지 않고, 상태 카드를 보호 현황의 맨 위(제목 바로 아래)로 옮긴다. 실패하면 제자리에 둔다.
@@ -1681,7 +1864,10 @@ function remember(key, input) {
 export function createStudentView({ api } = {}) {
   if (api && typeof api.get === 'function' && !dashApi) {
     dashApi = api;
-    measureOnce();
+    // 화면을 처음 열 때 한 번씩만 읽는다(점검 이력 → 내 PC 상태 → PC 연결·방화벽·Windows 기록 순서).
+    runFeature('history');
+    runFeature('pc');
+    runFeature('sys');
   }
   return {
     renderIdentity(input) { return identity(input); },
