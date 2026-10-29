@@ -17,6 +17,7 @@ import {createVaultOnAiService} from './ai/vault-service.mjs';
 import {createConnectionManager} from './connection/manager.mjs';
 import {createProjectScanner} from './vulnerabilities/project-scan.mjs';
 import {readPcStatus} from './pc-status.mjs';
+import {readSystemStatus} from './system-status.mjs';
 import {buildLocalLearnerSupportGuide,isLearnerSupportProblemKind,readLocalLearnerSupportObservation} from './learner-support/service.mjs';
 import {nativeOwn,nativePublicError} from './connection/native-login.mjs';
 import {createNativeHostContext,captureNativeHostConfiguration,readNativeHostConfiguration,openNativeHostOperation,readNativeHostOperation,assertNativeHostOperation,createNativeOperationVault,closeNativeHostOperation} from './connection/native-context.mjs';
@@ -691,6 +692,11 @@ export function createOnServer(serverOptions={}) {
       if(req.method==='GET'&&url.pathname==='/api/pc-status'){
         // 이 PC의 CPU·메모리·디스크를 일반 권한으로 한 번 읽는다. 자동 반복하지 않으며 경로·이름은 응답에 넣지 않는다.
         const data=await bounded(signal=>readPcStatus({clock,directory:root,signal}));send(200,{ok:true,data});
+        return;
+      }
+      if(req.method==='GET'&&url.pathname==='/api/system-status'){
+        // 네트워크·방화벽 켜짐 여부·Windows 기록 경고·오류 건수를 읽기 전용으로 한 번 읽는다. 아무 설정도 바꾸지 않는다.
+        const data=await bounded(signal=>readSystemStatus({clock,signal}));send(200,{ok:true,data});
         return;
       }
       if(req.method==='GET'&&url.pathname==='/api/vulnerabilities'){

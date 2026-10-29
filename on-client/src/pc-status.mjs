@@ -60,8 +60,7 @@ function readMemory(clock) {
     freeGiB: round(free / GIB, 2),
     totalGiB: round(total / GIB, 2),
     measuredAt,
-    scope: 'OS가 보고한 여유 메모리 기준(사용 = 전체 − 여유). 캐시로 쓰는 메모리는 사용에 포함될 수 있어 작업 관리자·활동 모니터와 다를 수 있음'
-      + (process.platform === 'darwin' ? '. macOS는 비활성·캐시 메모리를 여유로 세지 않아 활동 모니터의 「메모리 사용」보다 크게 높게 나올 수 있음' : ''),
+    scope: 'OS가 보고한 여유 메모리 기준(사용 = 전체 − 여유). 캐시로 쓰는 메모리는 사용에 포함될 수 있어 작업 관리자와 다를 수 있음',
     source: 'os.totalmem() / os.freemem()',
   };
 }

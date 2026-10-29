@@ -1040,7 +1040,7 @@ const SOURCE = {
 
 const HISTORY_LIMIT = 12;
 
-const dash = { mode: 'unknown', devices: null, sessions: null, vulnerabilities: null, ai: null, events: null, history: [], pc: [], measuring: false };
+const dash = { mode: 'unknown', devices: null, sessions: null, vulnerabilities: null, ai: null, events: null, history: [], pc: [], sys: [], measuring: false };
 let dashRoot = null;
 let dashApi = null;
 
@@ -1197,7 +1197,7 @@ const PC_REASON = {
   INVALID_RESPONSE: '서버 응답 형식이 맞지 않아 값을 쓰지 않았습니다.',
 };
 
-const PC_TOOL = { darwin: '활동 모니터', win32: '작업 관리자' };
+const PC_TOOL = { win32: '작업 관리자' };
 
 const isNumber = (value) => typeof value === 'number' && Number.isFinite(value);
 
@@ -1326,6 +1326,230 @@ function pcSection() {
   return section;
 }
 
+// ----- 내 PC 연결·방화벽·Windows 기록 (제공 기능 없음, 학생이 추가) -----
+// 서버(/api/system-status)가 일반 권한으로 읽기만 한 값을 받는다. 방화벽·보안 설정은 바꾸지 않는다.
+// Windows 경고·오류 건수는 침해나 공격 탐지 결과가 아니다. 이 구역에는 예시 값이 없고, 읽지 못한 값은 「확인 불가」와 이유로 보인다.
+const SYS_REASON = {
+  UNSUPPORTED_OS: '이 운영체제에서는 읽을 수 없습니다(Windows 전용).',
+  PERMISSION_DENIED: '일반 권한으로는 읽을 수 없습니다. 관리자 권한은 쓰지 않습니다.',
+  TIMEOUT: '읽는 데 시간이 초과됐습니다(서버 응답 또는 읽기 명령).',
+  COMMAND_UNAVAILABLE: '이 PC에서 읽기 도구(PowerShell)를 찾지 못했습니다.',
+  UNREADABLE: '이 PC의 값을 읽지 못했습니다.',
+  OUTPUT_INVALID: '읽은 값의 형식이 맞지 않아 쓰지 않았습니다.',
+};
+const FW_NAME = { domain: '도메인', private: '개인', public: '공용' };
+const FW_STATE = { on: '켜짐', off: '꺼짐', not_configured: '설정 안 됨' };
+const SYS_LOGS = ['System', 'Application'];
+const NOT_ATTACK_NOTE = '이 건수는 침해나 공격을 탐지한 결과가 아닙니다. 프로그램 오류·드라이버 경고 같은 일상적인 기록도 포함됩니다.';
+
+const isCount = (value) => Number.isInteger(value) && value >= 0;
+const hasTime = (raw) => Boolean(raw) && Number.isFinite(Date.parse(raw.measuredAt));
+
+function sysReasonText(code) {
+  return Object.hasOwn(SYS_REASON, code) ? SYS_REASON[code] : pcReasonText(code);
+}
+
+function sysFail(raw, reason) {
+  const code = reason || (raw && raw.status === 'unavailable' && typeof raw.reason === 'string' ? raw.reason : 'INVALID_RESPONSE');
+  return { ok: false, reason: code, measuredAt: hasTime(raw) ? raw.measuredAt : null };
+}
+
+function sysBase(raw) {
+  return { ok: true, measuredAt: raw.measuredAt, scope: textOf(raw.scope), source: textOf(raw.source) };
+}
+
+function sysNetwork(raw) {
+  if (!(raw && raw.status === 'ok' && hasTime(raw) && isCount(raw.externalInterfaces))) return sysFail(raw);
+  const a = raw.adapters;
+  let adapters = { ok: false, reason: a && a.status === 'unavailable' && typeof a.reason === 'string' ? a.reason : 'INVALID_RESPONSE' };
+  if (a && a.status === 'ok' && ['wired', 'wireless', 'other'].every((key) => a[key] && isCount(a[key].up) && isCount(a[key].total) && a[key].up <= a[key].total)) {
+    adapters = { ok: true, wired: a.wired, wireless: a.wireless, other: a.other };
+  }
+  return { ...sysBase(raw), externalInterfaces: raw.externalInterfaces, adapters };
+}
+
+function sysFirewall(raw) {
+  if (!(raw && raw.status === 'ok' && hasTime(raw) && Array.isArray(raw.profiles) && raw.profiles.length > 0)) return sysFail(raw);
+  if (!raw.profiles.every((p) => p && Object.hasOwn(FW_NAME, p.name) && Object.hasOwn(FW_STATE, p.enabled))) return sysFail(raw, 'INVALID_RESPONSE');
+  return { ...sysBase(raw), profiles: raw.profiles.map((p) => ({ name: p.name, enabled: p.enabled })) };
+}
+
+function sysEvents(raw) {
+  if (!(raw && raw.status === 'ok' && hasTime(raw) && isCount(raw.hours) && isCount(raw.cap) && Array.isArray(raw.logs))) return sysFail(raw);
+  const logs = {};
+  for (const item of raw.logs) {
+    if (!item || !SYS_LOGS.includes(item.log)) return sysFail(raw, 'INVALID_RESPONSE');
+    if (item.status === 'ok' && isCount(item.errors) && isCount(item.warnings)) {
+      logs[item.log] = { ok: true, errors: item.errors, warnings: item.warnings, capped: item.capped === true };
+    } else if (item.status === 'unavailable' && typeof item.reason === 'string') {
+      logs[item.log] = { ok: false, reason: item.reason };
+    } else {
+      return sysFail(raw, 'INVALID_RESPONSE');
+    }
+  }
+  if (!SYS_LOGS.every((log) => logs[log])) return sysFail(raw, 'INVALID_RESPONSE');
+  return { ...sysBase(raw), hours: raw.hours, cap: raw.cap, logs };
+}
+
+// 로컬 서버에서 이 PC의 값을 한 번 읽어 최근 12회까지 쌓는다. 파일로 저장하지 않는다.
+async function measureSystem() {
+  let result = null;
+  try {
+    result = await dashApi.get('/api/system-status');
+  } catch {
+    result = null;
+  }
+  const data = result && result.ok && result.data && typeof result.data === 'object' ? result.data : null;
+  const failure = data ? null : (result && result.error ? safeDiagValue(result.error.code) : 'NETWORK_ERROR');
+  const sample = { at: new Date().toISOString() };
+  const lost = { ok: false, reason: failure, measuredAt: null };
+  sample.network = data ? sysNetwork(data.network) : lost;
+  sample.firewall = data ? sysFirewall(data.firewall) : lost;
+  sample.events = data ? sysEvents(data.events) : lost;
+  dash.sys.unshift(sample);
+  dash.sys.length = Math.min(dash.sys.length, HISTORY_LIMIT);
+}
+
+function sysLine(label, text, kind, detail, warn) {
+  const wrap = metric(label, text, kind, warn);
+  if (detail) wrap.append(styled(node('div', detail), { fontSize: '0.8rem', color: 'var(--muted)' }));
+  return wrap;
+}
+
+function sysMeta(value) {
+  return `잰 시각 ${pcTime(value.measuredAt)} · 집계 범위: ${value.scope} · 출처: ${value.source}`;
+}
+
+function sysFailLine(label, value) {
+  const tried = value.measuredAt ? ` · 시도한 시각 ${pcTime(value.measuredAt)}` : '';
+  return sysLine(label, '확인 불가', 'unknown', `이유: ${sysReasonText(value.reason)}${tried}`, true);
+}
+
+function networkLine(value) {
+  if (!value.ok) return sysFailLine('네트워크 연결', value);
+  const a = value.adapters;
+  const part = (name, group) => `${name} ${group.up}/${group.total} 연결`;
+  const text = a.ok
+    ? [part('유선', a.wired), part('무선', a.wireless), ...(a.other.total > 0 ? [part('기타', a.other)] : [])].join(' · ')
+    : `IP 주소가 있는 외부 인터페이스 ${value.externalInterfaces}개`;
+  const notice = a.ok ? '' : `유선·무선 구분: 확인 불가 — ${sysReasonText(a.reason)} `;
+  const none = a.ok && a.wired.up + a.wireless.up + a.other.up === 0;
+  return sysLine('네트워크 연결', text, 'measured', `${notice}${sysMeta(value)}`, none);
+}
+
+function firewallLine(value) {
+  if (!value.ok) return sysFailLine('방화벽 설정', value);
+  const text = value.profiles.map((p) => `${FW_NAME[p.name]} ${FW_STATE[p.enabled]}`).join(' · ');
+  const warn = value.profiles.some((p) => p.enabled !== 'on');
+  return sysLine('방화벽 설정 (읽기만 함)', text, 'measured', `이 앱은 방화벽과 보안 설정을 바꾸지 않습니다. ${sysMeta(value)}`, warn);
+}
+
+function eventLines(value) {
+  if (!value.ok) return [sysFailLine('Windows 경고·오류 (System·Application)', value)];
+  return SYS_LOGS.map((log) => {
+    const label = `Windows ${log} 기록 (최근 ${value.hours}시간)`;
+    const item = value.logs[log];
+    if (!item.ok) return sysFailLine(label, { reason: item.reason, measuredAt: value.measuredAt });
+    const cap = item.capped ? ` (세는 한도 ${value.cap}건에서 멈춤: 실제는 이보다 많음)` : '';
+    return sysLine(label, `오류 ${item.errors}건 · 경고 ${item.warnings}건${cap}`, 'measured', sysMeta(value));
+  });
+}
+
+// PC 조회가 성공한 것과 SDP 서버 연결 상태를 섞지 않는다. SDP는 서버가 알려 준 연결 방식만 따른다.
+function sdpLine() {
+  const note = 'PC 조회 결과와 SDP 연결 상태는 따로 보여 줍니다. PC 조회가 성공해도 SDP 연결이 됐다는 뜻이 아닙니다.';
+  // 로컬 서버가 지금 응답하지 않으면 직전에 받은 연결 방식을 방금 확인한 것처럼 보이지 않게 한다.
+  const lastCheck = dash.history[0];
+  if (lastCheck && lastCheck.reach === 'no_response') {
+    return sysLine('SDP 서버', '확인 불가', 'unknown', `로컬 서버가 응답하지 않아 SDP 연결 상태를 지금 확인할 수 없습니다. ${note}`, true);
+  }
+  if (dash.mode === 'connected') return sysLine('SDP 서버', 'SDP 연결 응답 있음', 'live', note);
+  if (dash.mode === 'demo') return sysLine('SDP 서버', 'SDP 미연결 (예제 실행)', 'example', `예제 자료로 화면만 보여 주며 실제 SDP 연결이 아닙니다. ${note}`, true);
+  if (dash.mode === 'disconnected') return sysLine('SDP 서버', 'SDP 미연결', 'measured', `서버가 「엔진 연결 없음」으로 응답한 것을 이 PC에서 확인했습니다. ${note}`, true);
+  return sysLine('SDP 서버', '확인 불가', 'unknown', note, true);
+}
+
+function sysCountText(item) {
+  return item.ok ? `오류 ${item.errors} · 경고 ${item.warnings}${item.capped ? '+' : ''}` : '확인 불가';
+}
+
+function sysDeltaText(now, before) {
+  if (!now.ok) return '이번 값 확인 불가';
+  if (!before) return '직전 점검 없음';
+  if (!before.ok) return '직전 값 확인 불가';
+  const delta = (a, b) => (a === b ? '±0' : `${a > b ? '▲ +' : '▼ −'}${Math.abs(a - b)}`);
+  return `직전 대비 오류 ${delta(now.errors, before.errors)} · 경고 ${delta(now.warnings, before.warnings)}`;
+}
+
+function sysTrendTable() {
+  const cell = { padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)', verticalAlign: 'top' };
+  const small = { fontSize: '0.75rem', color: 'var(--muted)' };
+  const table = styled(node('table'), { width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', marginTop: '8px' });
+  const head = node('tr');
+  for (const title of ['점검 시각', '네트워크 연결', '방화벽(켜짐 프로필)', 'System 경고·오류', 'Application 경고·오류']) head.append(styled(node('th', title), cell));
+  const thead = node('thead');
+  thead.append(head);
+  const body = node('tbody');
+  dash.sys.forEach((sample, index) => {
+    const before = dash.sys[index + 1];
+    const row = node('tr');
+    row.append(styled(node('td', pcTime(sample.at)), cell));
+
+    const net = styled(node('td'), cell);
+    if (sample.network.ok && sample.network.adapters.ok) {
+      const a = sample.network.adapters;
+      net.append(node('strong', `유선 ${a.wired.up}/${a.wired.total} · 무선 ${a.wireless.up}/${a.wireless.total}`));
+    } else if (sample.network.ok) {
+      net.append(node('strong', `외부 인터페이스 ${sample.network.externalInterfaces}개`), styled(node('div', '유선·무선 구분 확인 불가'), small));
+    } else {
+      net.append(node('strong', '확인 불가', 'state-error'), styled(node('div', sysReasonText(sample.network.reason)), small));
+    }
+    row.append(net);
+
+    const fw = styled(node('td'), cell);
+    if (sample.firewall.ok) {
+      const on = sample.firewall.profiles.filter((p) => p.enabled === 'on').length;
+      fw.append(node('strong', `${on}/${sample.firewall.profiles.length}`, on === sample.firewall.profiles.length ? undefined : 'state-error'));
+    } else {
+      fw.append(node('strong', '확인 불가', 'state-error'), styled(node('div', sysReasonText(sample.firewall.reason)), small));
+    }
+    row.append(fw);
+
+    for (const log of SYS_LOGS) {
+      const td = styled(node('td'), cell);
+      const now = sample.events.ok ? sample.events.logs[log] : { ok: false, reason: sample.events.reason };
+      const prev = before && before.events.ok ? before.events.logs[log] : before ? { ok: false } : null;
+      if (now.ok) td.append(node('strong', sysCountText(now)));
+      else td.append(node('strong', '확인 불가', 'state-error'), styled(node('div', sysReasonText(now.reason)), small));
+      td.append(styled(node('div', sysDeltaText(now, prev)), { fontSize: '0.75rem' }));
+      row.append(td);
+    }
+    body.append(row);
+  });
+  table.append(thead, body);
+  return table;
+}
+
+function systemSection() {
+  const section = styled(node('section'), { margin: '16px 0 0' });
+  const last = dash.sys[0];
+  const anyOk = last && (last.network.ok || last.firewall.ok || last.events.ok);
+  const head = styled(node('div'), { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' });
+  head.append(node('h3', 'PC 연결·방화벽·Windows 기록'), badge(anyOk ? 'measured' : 'unknown'));
+  section.append(head);
+  section.append(styled(node('p', `이 PC에서 방금 일반 권한으로 읽기만 한 값입니다. 방화벽과 보안 설정은 바꾸지 않고, 관리자 권한이 필요한 항목은 「확인 불가」와 이유로 보입니다. 「지금 점검」을 누를 때만 읽습니다. ${NOT_ATTACK_NOTE} 이 구역에는 예시 값이 없습니다.`), { margin: '4px 0 8px', fontSize: '0.8rem', color: 'var(--muted)' }));
+  if (!last) {
+    section.append(node('p', dash.measuring ? '읽는 중…' : '아직 읽지 않았습니다. 「지금 점검」을 누르면 한 번 읽습니다.', 'state state-empty'));
+    section.append(sdpLine());
+    return section;
+  }
+  section.append(networkLine(last.network), firewallLine(last.firewall), ...eventLines(last.events));
+  section.append(styled(node('p', NOT_ATTACK_NOTE), { margin: '8px 0 0', fontSize: '0.8rem', fontWeight: '600' }));
+  section.append(sdpLine());
+  section.append(styled(node('h4', `추이 비교 (최근 ${dash.sys.length}회, 최신이 위)`), { margin: '16px 0 0' }), sysTrendTable());
+  return section;
+}
+
 function recordResultText(record) {
   if (record.reach === 'engine_ok') return '서버 응답 · 엔진 값 수신';
   if (record.reach === 'server_error') return `서버 응답 · ${record.code}`;
@@ -1395,7 +1619,7 @@ function buildDashboard() {
   try {
     const grid = styled(node('div'), { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' });
     grid.append(connectionCard(), deviceSessionCard(), aiCard(), packageCard());
-    dashRoot.replaceChildren(legendLine(), grid, historySection(), pcSection(), recordsLine());
+    dashRoot.replaceChildren(legendLine(), grid, historySection(), pcSection(), systemSection(), recordsLine());
   } catch {
     dashRoot.replaceChildren(node('p', '대시보드를 그리지 못했습니다. 아래 상태 표시는 그대로 동작합니다. 값은 확인 불가입니다.', 'state state-error'));
   }
@@ -1420,7 +1644,9 @@ async function measureOnce() {
   const reach = localFailure ? 'no_response' : result.ok ? 'engine_ok' : 'server_error';
   dash.history.unshift({ time: new Date().toLocaleTimeString('ko-KR', { hour12: false }), ms, reach, code });
   dash.history.length = Math.min(dash.history.length, HISTORY_LIMIT);
+  // 순서대로 읽는다. 동시에 읽으면 PowerShell 실행이 CPU 측정 구간(250 ms)에 섞여 CPU 사용률이 크게 부풀려진다.
   await measurePc();
+  await measureSystem();
   dash.measuring = false;
   buildDashboard();
 }
